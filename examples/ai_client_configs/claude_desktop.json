@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "traefik": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/traefik-mcp-server",
+        "run",
+        "traefik-mcp"
+      ],
+      "env": {
+        "TRAEFIK_API_URL": "http://localhost:8080"
+      }
+    }
+  }
+}
