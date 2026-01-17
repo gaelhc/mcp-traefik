@@ -92,8 +92,8 @@ class TestTraefikClient:
             result = await client.get_routers()
             
             assert len(result) == 2
-            assert result[0]["rule"] == "Host(`example.com`)"
-            assert result[1]["rule"] == "Host(`test.com`)"
+            assert result["router1@docker"]["rule"] == "Host(`example.com`)"
+            assert result["router2@docker"]["rule"] == "Host(`test.com`)"
             mock_request.assert_called_once_with('GET', '/api/http/routers')
     
     @pytest.mark.asyncio
@@ -127,7 +127,7 @@ class TestTraefikClient:
             result = await client.get_services()
             
             assert len(result) == 1
-            assert "loadBalancer" in result[0]
+            assert "loadBalancer" in result["service1@docker"]
             mock_request.assert_called_once_with('GET', '/api/http/services')
     
     @pytest.mark.asyncio
@@ -148,7 +148,7 @@ class TestTraefikClient:
             result = await client.get_middlewares()
             
             assert len(result) == 1
-            assert "addPrefix" in result[0]
+            assert "addPrefix" in result["middleware1@docker"]
             mock_request.assert_called_once_with('GET', '/api/http/middlewares')
     
     @pytest.mark.asyncio

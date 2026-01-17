@@ -37,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-traefik-mcp = "traefik_mcp.server:main"
+traefik-mcp = "traefik_mcp.server:cli_main"
 
 [build-system]
 requires = ["hatchling"]

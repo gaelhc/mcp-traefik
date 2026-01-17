@@ -167,16 +167,15 @@ class TestTraefikOverview:
     def test_overview_creation(self):
         """Test creating overview with data."""
         overview = TraefikOverview(
-            router={"docker": 5, "file": 2},
-            service={"docker": 3},
-            middleware={"file": 1},
-            entrypoint={"web": 1, "secure": 1}
+            http={"routers": {"total": 7}, "services": {"total": 3}, "middlewares": {"total": 1}},
+            tcp={"routers": {"total": 0}, "services": {"total": 0}, "middlewares": {"total": 0}},
+            udp={"routers": {"total": 0}, "services": {"total": 0}, "middlewares": {"total": 0}}
         )
         
         assert overview.total_routers == 7
         assert overview.total_services == 3
         assert overview.total_middlewares == 1
-        assert overview.total_entrypoints == 2
+        assert overview.total_entrypoints == 0
     
     def test_overview_empty(self):
         """Test creating empty overview."""

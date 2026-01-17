@@ -129,7 +129,7 @@ class QueryTools:
         """
         try:
             routers_data = await self.client.get_routers(provider)
-            routers = [Router(name=name, **data) for name, data in routers_data.items()]
+            routers = [Router(**data) for data in routers_data]
             formatted = format_router_list(routers)
             
             return [TextContent(type="text", text=formatted)]
@@ -189,7 +189,7 @@ class QueryTools:
         """
         try:
             services_data = await self.client.get_services(provider)
-            services = [Service(name=name, **data) for name, data in services_data.items()]
+            services = [Service(**data) for data in services_data]
             formatted = format_service_list(services)
             
             return [TextContent(type="text", text=formatted)]
@@ -256,7 +256,7 @@ class QueryTools:
         """
         try:
             middlewares_data = await self.client.get_middlewares(provider)
-            middlewares = [Middleware(name=name, **data) for name, data in middlewares_data.items()]
+            middlewares = [Middleware(**data) for data in middlewares_data]
             formatted = format_middleware_list(middlewares)
             
             return [TextContent(type="text", text=formatted)]

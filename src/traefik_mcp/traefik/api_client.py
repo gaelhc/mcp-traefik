@@ -6,6 +6,7 @@ Async HTTP client for interacting with Traefik's REST API.
 import logging
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
+import base64
 
 import httpx
 from pydantic import BaseModel
@@ -38,17 +39,23 @@ class TraefikClient:
     Provides methods to query Traefik configuration, status, and metrics.
     """
     
-    def __init__(self, api_url: str, api_key: Optional[str] = None, timeout: float = 30.0):
+    def __init__(self, api_url: str, api_key: Optional[str] = None, 
+                 basic_auth_username: Optional[str] = None, 
+                 basic_auth_password: Optional[str] = None, timeout: float = 30.0):
         """
         Initialize Traefik API client.
         
         Args:
             api_url: Base URL for Traefik API (e.g., http://localhost:8080)
-            api_key: Optional API key for authentication
+            api_key: Optional API key for authentication (Bearer token)
+            basic_auth_username: Optional username for basic authentication
+            basic_auth_password: Optional password for basic authentication
             timeout: Request timeout in seconds
         """
         self.api_url = api_url.rstrip('/')
         self.api_key = api_key
+        self.basic_auth_username = basic_auth_username
+        self.basic_auth_password = basic_auth_password
         self.timeout = timeout
         
         # Prepare headers
@@ -57,8 +64,13 @@ class TraefikClient:
             'Accept': 'application/json',
         }
         
+        # Set authentication header - API key takes precedence over basic auth
         if api_key:
             self.headers['Authorization'] = f'Bearer {api_key}'
+        elif basic_auth_username and basic_auth_password:
+            credentials = f"{basic_auth_username}:{basic_auth_password}"
+            encoded_credentials = base64.b64encode(credentials.encode()).decode()
+            self.headers['Authorization'] = f'Basic {encoded_credentials}'
     
     async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """
@@ -160,7 +172,7 @@ class TraefikClient:
             endpoint += f'?provider={provider}'
         
         response = await self._make_request('GET', endpoint)
-        return list(response.values())
+        return response
     
     async def get_router(self, router_name: str, provider: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -194,7 +206,7 @@ class TraefikClient:
             endpoint += f'?provider={provider}'
         
         response = await self._make_request('GET', endpoint)
-        return list(response.values())
+        return response
     
     async def get_service(self, service_name: str, provider: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -228,7 +240,7 @@ class TraefikClient:
             endpoint += f'?provider={provider}'
         
         response = await self._make_request('GET', endpoint)
-        return list(response.values())
+        return response
     
     async def get_middleware(self, middleware_name: str, provider: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -255,7 +267,7 @@ class TraefikClient:
             List of entrypoint configurations
         """
         response = await self._make_request('GET', '/api/entrypoints')
-        return list(response.values())
+        return response
     
     async def get_version(self) -> Dict[str, Any]:
         """

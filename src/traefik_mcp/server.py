@@ -36,10 +36,28 @@ async def initialize_client():
         raise ValueError("TRAEFIK_API_URL environment variable is required")
     
     api_key = os.getenv('TRAEFIK_API_KEY')
+    basic_auth_username = os.getenv('TRAEFIK_BASIC_AUTH_USERNAME')
+    basic_auth_password = os.getenv('TRAEFIK_BASIC_AUTH_PASSWORD')
     timeout = float(os.getenv('MCP_TIMEOUT', '30.0'))
     
     logger.info(f"Initializing Traefik client for {api_url}")
-    traefik_client = TraefikClient(api_url=api_url, api_key=api_key, timeout=timeout)
+    
+    # Determine authentication method
+    if api_key:
+        logger.info("Using API key authentication")
+        traefik_client = TraefikClient(api_url=api_url, api_key=api_key, timeout=timeout)
+    elif basic_auth_username and basic_auth_password:
+        logger.info("Using basic authentication")
+        traefik_client = TraefikClient(
+            api_url=api_url, 
+            basic_auth_username=basic_auth_username,
+            basic_auth_password=basic_auth_password,
+            timeout=timeout
+        )
+    else:
+        logger.info("No authentication configured")
+        traefik_client = TraefikClient(api_url=api_url, timeout=timeout)
+    
     query_tools = QueryTools(traefik_client)
     
     # Test connection
@@ -204,12 +222,22 @@ async def main():
         
         # Start the MCP server
         logger.info("Starting Traefik MCP server")
-        await mcp.server.stdio.run(server)
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream, 
+                write_stream, 
+                server.create_initialization_options()
+            )
         
     except Exception as e:
         logger.error(f"Failed to start server: {str(e)}")
         raise
 
 
-if __name__ == "__main__":
+def cli_main():
+    """CLI entry point that handles async main."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    cli_main()
