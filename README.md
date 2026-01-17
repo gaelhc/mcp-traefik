@@ -23,7 +23,7 @@ This MCP server enables AI assistants to query and manage Traefik configurations
 - [uv](https://github.com/astral-sh/uv) package manager
 - A running Traefik instance with API enabled
 
-### Setup
+### Option 1: Local Development Setup
 
 1. Clone the repository:
    ```bash
@@ -42,6 +42,39 @@ This MCP server enables AI assistants to query and manage Traefik configurations
    ```bash
    cp .env.example .env
    # Edit .env with your Traefik API URL and credentials
+   ```
+
+### Option 2: Docker Setup
+
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd traefik-mcp
+   ```
+
+2. Build the Docker image:
+   ```bash
+   docker build -t traefik-mcp .
+   ```
+
+3. Run the container:
+   ```bash
+   # Basic run
+   docker run -it --rm traefik-mcp
+
+   # With environment variables
+   docker run -it --rm \
+     -e TRAEFIK_API_URL=http://traefik:8080 \
+     -e TRAEFIK_BASIC_AUTH_USERNAME=admin \
+     -e TRAEFIK_BASIC_AUTH_PASSWORD=admin \
+     traefik-mcp
+
+   # Background service
+   docker run -d --name traefik-mcp \
+     -e TRAEFIK_API_URL=http://traefik:8080 \
+     -e TRAEFIK_BASIC_AUTH_USERNAME=admin \
+     -e TRAEFIK_BASIC_AUTH_PASSWORD=admin \
+     traefik-mcp
    ```
 
 ## Configuration
@@ -81,6 +114,29 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
     "traefik": {
       "command": "/path/to/traefik-mcp/.venv/bin/traefik-mcp",
       "args": [],
+      "env": {
+        "TRAEFIK_API_URL": "http://localhost:8080",
+        "TRAEFIK_BASIC_AUTH_USERNAME": "admin",
+        "TRAEFIK_BASIC_AUTH_PASSWORD": "admin"
+      }
+    }
+  }
+}
+```
+
+#### Claude Desktop (Docker)
+
+```json
+{
+  "mcpServers": {
+    "traefik": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "traefik-mcp"
+      ],
       "env": {
         "TRAEFIK_API_URL": "http://localhost:8080",
         "TRAEFIK_BASIC_AUTH_USERNAME": "admin",
