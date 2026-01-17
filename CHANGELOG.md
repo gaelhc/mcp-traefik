@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-01-17
+
+### Added
+- Docker support with optimized multi-stage build
+- requirements.txt for containerized deployments
+- Comprehensive Docker setup documentation in README
+- Claude Desktop Docker integration examples
+- Complete container deployment instructions
+
+### Changed
+- Bumped version to 1.0.0 for stable release
+- Updated README with dual installation options (local/Docker)
+- Improved documentation structure for better user experience
+
+---
+
 ## [Unreleased]
 
 ### Added
