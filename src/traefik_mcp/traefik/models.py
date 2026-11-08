@@ -156,12 +156,6 @@ class TraefikOverview(TraefikModel):
                 self.udp.get('middlewares', {}).get('total', 0))
     
     @property
-    def total_entrypoints(self) -> int:
-        """Total number of entrypoints."""
-        # EntryPoints are not in overview, would need separate API call
-        return 0
-    
-    @property
     def router(self) -> Dict[str, int]:
         """Router counts by protocol."""
         return {

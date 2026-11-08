@@ -1,0 +1,13 @@
+services:
+  mcp-beszel:
+    build: .
+    container_name: mcp-beszel
+    restart: unless-stopped
+    environment:
+      - MCP_TRANSPORT=http # required when containerized
+      - MCP_HOST=0.0.0.0 # IP only
+      - MCP_PORT=8080 # Affect port in the container only 
+      - MCP_LOG_LEVEL=INFO
+      - TRAEFIK_API_URL='https://traefik-dashboard.mon-domaine.fr'
+    ports:
+      - "8080:8080" 

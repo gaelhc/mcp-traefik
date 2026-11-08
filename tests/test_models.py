@@ -175,7 +175,6 @@ class TestTraefikOverview:
         assert overview.total_routers == 7
         assert overview.total_services == 3
         assert overview.total_middlewares == 1
-        assert overview.total_entrypoints == 0
     
     def test_overview_empty(self):
         """Test creating empty overview."""
@@ -184,7 +183,6 @@ class TestTraefikOverview:
         assert overview.total_routers == 0
         assert overview.total_services == 0
         assert overview.total_middlewares == 0
-        assert overview.total_entrypoints == 0
 
 
 class TestTraefikVersion:

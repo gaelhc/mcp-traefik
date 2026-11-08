@@ -148,127 +148,6 @@ class TraefikClient:
         except TraefikError:
             return False
     
-    async def get_overview(self) -> Dict[str, Any]:
-        """
-        Get Traefik overview information.
-        
-        Returns:
-            Overview data with router, service, and middleware counts
-        """
-        return await self._make_request('GET', '/api/overview')
-    
-    async def get_routers(self, provider: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Get all HTTP routers.
-        
-        Args:
-            provider: Optional provider name to filter by
-            
-        Returns:
-            List of router configurations
-        """
-        endpoint = '/api/http/routers'
-        if provider:
-            endpoint += f'?provider={provider}'
-        
-        response = await self._make_request('GET', endpoint)
-        return response
-    
-    async def get_router(self, router_name: str, provider: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get specific router configuration.
-        
-        Args:
-            router_name: Name of the router
-            provider: Optional provider name
-            
-        Returns:
-            Router configuration
-        """
-        endpoint = f'/api/http/routers/{router_name}'
-        if provider:
-            endpoint += f'?provider={provider}'
-        
-        return await self._make_request('GET', endpoint)
-    
-    async def get_services(self, provider: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Get all HTTP services.
-        
-        Args:
-            provider: Optional provider name to filter by
-            
-        Returns:
-            List of service configurations
-        """
-        endpoint = '/api/http/services'
-        if provider:
-            endpoint += f'?provider={provider}'
-        
-        response = await self._make_request('GET', endpoint)
-        return response
-    
-    async def get_service(self, service_name: str, provider: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get specific service configuration.
-        
-        Args:
-            service_name: Name of the service
-            provider: Optional provider name
-            
-        Returns:
-            Service configuration
-        """
-        endpoint = f'/api/http/services/{service_name}'
-        if provider:
-            endpoint += f'?provider={provider}'
-        
-        return await self._make_request('GET', endpoint)
-    
-    async def get_middlewares(self, provider: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Get all HTTP middlewares.
-        
-        Args:
-            provider: Optional provider name to filter by
-            
-        Returns:
-            List of middleware configurations
-        """
-        endpoint = '/api/http/middlewares'
-        if provider:
-            endpoint += f'?provider={provider}'
-        
-        response = await self._make_request('GET', endpoint)
-        return response
-    
-    async def get_middleware(self, middleware_name: str, provider: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get specific middleware configuration.
-        
-        Args:
-            middleware_name: Name of the middleware
-            provider: Optional provider name
-            
-        Returns:
-            Middleware configuration
-        """
-        endpoint = f'/api/http/middlewares/{middleware_name}'
-        if provider:
-            endpoint += f'?provider={provider}'
-        
-        return await self._make_request('GET', endpoint)
-    
-    async def get_entrypoints(self) -> List[Dict[str, Any]]:
-        """
-        Get all entrypoints.
-        
-        Returns:
-            List of entrypoint configurations
-        """
-        response = await self._make_request('GET', '/api/entrypoints')
-        return response
-    
     async def get_version(self) -> Dict[str, Any]:
         """
         Get Traefik version information.
@@ -277,3 +156,29 @@ class TraefikClient:
             Version information
         """
         return await self._make_request('GET', '/api/version')
+    
+    async def get_overview(self) -> Dict[str, Any]:
+        """
+        Get Traefik overview information.
+        
+        Returns:
+            Overview data with router, service, and middleware counts
+        """
+        return await self._make_request('GET', '/api/overview')
+
+    async def get_api_content(self,  endpoint: str) -> List[Dict[str|int, Any]]:
+        """
+            Get a list of components.
+            
+            Args:
+                protocol: Type of protocol, in ['http', 'udp', 'tcp']
+                component_type: Type of component, in ['middleware', 'routers', 'services']
+                
+            Returns:
+                List of components
+        """
+        # if provider:
+        #     endpoint += f'?provider={provider}'
+        
+        response = await self._make_request('GET', endpoint)
+        return response
