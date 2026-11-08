@@ -2,77 +2,61 @@
 Traefik MCP Server
 
 A Model Context Protocol server for managing Traefik reverse proxy instances.
+Supports both stdio and HTTP/SSE transports via environment variable control.
+Uses Starlette ASGI app for HTTP mode with proper SSE routing.
 """
+
 import asyncio
 import logging
 import os
-from typing import Any, List
+from typing import Any
+
+import uvicorn
+
+from starlette.applications import Starlette
+from starlette.routing import Route, Mount
+from starlette.responses import JSONResponse
 
 from mcp.server import Server
-from mcp.types import Tool, TextContent
+from mcp.types import (
+    Tool,
+    TextContent,
+    CallToolResult,
+    ListToolsResult,
+    CallToolRequestParams,
+    PaginatedRequestParams,
+)
+
 import mcp.server.stdio
+import mcp.server.sse
 
 from .traefik.api_client import TraefikClient, TraefikError
 from .tools.query_tools import QueryTools
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize server
-server = Server("traefik-mcp")
 
-# Global variables for client and tools
-traefik_client: TraefikClient = None
-query_tools: QueryTools = None
+# Global variables
+traefik_client: TraefikClient | None = None
+query_tools: QueryTools | None = None
 
 
-async def initialize_client():
-    """Initialize Traefik client from environment variables."""
-    global traefik_client, query_tools
-    
-    api_url = os.getenv('TRAEFIK_API_URL')
-    if not api_url:
-        raise ValueError("TRAEFIK_API_URL environment variable is required")
-    
-    api_key = os.getenv('TRAEFIK_API_KEY')
-    basic_auth_username = os.getenv('TRAEFIK_BASIC_AUTH_USERNAME')
-    basic_auth_password = os.getenv('TRAEFIK_BASIC_AUTH_PASSWORD')
-    timeout = float(os.getenv('MCP_TIMEOUT', '30.0'))
-    
-    logger.info(f"Initializing Traefik client for {api_url}")
-    
-    # Determine authentication method
-    if api_key:
-        logger.info("Using API key authentication")
-        traefik_client = TraefikClient(api_url=api_url, api_key=api_key, timeout=timeout)
-    elif basic_auth_username and basic_auth_password:
-        logger.info("Using basic authentication")
-        traefik_client = TraefikClient(
-            api_url=api_url, 
-            basic_auth_username=basic_auth_username,
-            basic_auth_password=basic_auth_password,
-            timeout=timeout
-        )
-    else:
-        logger.info("No authentication configured")
-        traefik_client = TraefikClient(api_url=api_url, timeout=timeout)
-    
-    query_tools = QueryTools(traefik_client)
-    
-    # Test connection
-    if await traefik_client.health_check():
-        logger.info("Successfully connected to Traefik API")
-    else:
-        logger.warning("Failed to connect to Traefik API - server will start but tools may fail")
+# ---------------------------------------------------------
+# MCP Tool definitions
+# ---------------------------------------------------------
 
-
-@server.list_tools()
-async def list_tools() -> List[Tool]:
+async def list_tools(
+    ctx,
+    params: PaginatedRequestParams | None = None,
+) -> ListToolsResult:
     """List available tools."""
-    return [
+
+    tools = [
         Tool(
-            name="get_traefik_overview",
+            name="get_overview",
             description="Get an overview of the Traefik instance configuration",
             inputSchema={
                 "type": "object",
@@ -81,161 +65,372 @@ async def list_tools() -> List[Tool]:
             }
         ),
         Tool(
-            name="list_routers",
-            description="List all HTTP routers in Traefik",
+            name="get_version",
+            description="Get the Traefik API version",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "provider": {
-                        "type": "string",
-                        "description": "Optional provider name to filter by"
-                    }
-                },
+                "properties": {},
                 "required": []
             }
         ),
         Tool(
-            name="get_router_details",
-            description="Get detailed configuration for a specific router",
+            name="get_entrypoint_list",
+            description="Get the list of entrypoints",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_entrypoint_details",
+            description="Get the details about an entrypoint",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "router_name": {
+                    "entrypoint_name": {
                         "type": "string",
-                        "description": "Name of the router"
+                        "description": "Name of the entrypoint"
                     },
-                    "provider": {
-                        "type": "string",
-                        "description": "Optional provider name"
-                    }
-                },
-                "required": ["router_name"]
-            }
-        ),
-        Tool(
-            name="list_services",
-            description="List all HTTP services in Traefik",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "provider": {
-                        "type": "string",
-                        "description": "Optional provider name to filter by"
-                    }
                 },
                 "required": []
             }
         ),
         Tool(
-            name="get_service_details",
-            description="Get detailed configuration for a specific service",
+            name="get_component_list",
+            description="Get a list of components",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "service_name": {
+                    "protocol": {
                         "type": "string",
-                        "description": "Name of the service"
+                        "description": "Protocol of the components, in ['http', 'tcp', 'udp']"
                     },
-                    "provider": {
+                    "component_type": {
                         "type": "string",
-                        "description": "Optional provider name"
+                        "description": "Type of component, in ['middlewares', 'routers', 'services']"
                     }
                 },
-                "required": ["service_name"]
+                "required": ["protocol","component_type"]
             }
         ),
         Tool(
-            name="list_middlewares",
-            description="List all HTTP middlewares in Traefik",
+            name="get_component_details",
+            description="Get the details about a component",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "provider": {
+                    "protocol": {
                         "type": "string",
-                        "description": "Optional provider name to filter by"
+                        "description": "Protocol of the component, in ['http', 'tcp', 'udp']"
+                    },
+                    "component_type": {
+                        "type": "string",
+                        "description": "Type of component, in ['middlewares', 'routers', 'services']"
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component including its provider i.e. `name@provider`"
                     }
                 },
-                "required": []
+                "required": ["protocol", "component_type", "component_name"]
             }
         )
     ]
 
+    return ListToolsResult(tools=tools)
 
-@server.call_tool()
-async def call_tool(name: str, arguments: Any) -> List[TextContent]:
+
+async def call_tool(
+    ctx,
+    params: CallToolRequestParams,
+) -> CallToolResult:
     """Handle tool calls."""
+
+    name = params.name
+    args = params.arguments or {}
+
     if not query_tools:
-        return [TextContent(
-            type="text",
-            text="Traefik client not initialized. Please check your configuration."
-        )]
-    
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text="Traefik client not initialized. Please check your configuration."
+                )
+            ],
+            isError=True
+        )
+
     try:
-        if name == "get_traefik_overview":
-            return await query_tools.get_overview()
-        
-        elif name == "list_routers":
-            provider = arguments.get('provider') if arguments else None
-            return await query_tools.list_routers(provider)
-        
-        elif name == "get_router_details":
-            router_name = arguments.get('router_name') if arguments else None
-            provider = arguments.get('provider') if arguments else None
-            if not router_name:
-                return [TextContent(type="text", text="Error: router_name is required")]
-            return await query_tools.get_router_details(router_name, provider)
-        
-        elif name == "list_services":
-            provider = arguments.get('provider') if arguments else None
-            return await query_tools.list_services(provider)
-        
-        elif name == "get_service_details":
-            service_name = arguments.get('service_name') if arguments else None
-            provider = arguments.get('provider') if arguments else None
-            if not service_name:
-                return [TextContent(type="text", text="Error: service_name is required")]
-            return await query_tools.get_service_details(service_name, provider)
-        
-        elif name == "list_middlewares":
-            provider = arguments.get('provider') if arguments else None
-            return await query_tools.list_middlewares(provider)
-        
+        if name == "get_overview":
+            result = await query_tools.get_overview()
+
+        elif name == "get_version":
+            result = await query_tools.get_version()
+
+        elif name == "get_entrypoint_list":
+            result = await query_tools.get_api_content('/api/entrypoints')
+
+        elif name == "get_entrypoint_details":
+            entrypoint_name = args.get('entrypoint_name')
+            entrypoint = f"/api/entrypoints/{entrypoint_name}"
+            result = await query_tools.get_api_content(entrypoint)
+
+        elif name == "get_component_list":
+            protocol = args.get('protocol')
+            component_type = args.get('component_type')
+            entrypoint = f"/api/{protocol}/{component_type}"
+            result = await query_tools.get_api_content(entrypoint)
+
+        elif name == "get_component_details":
+            protocol = args.get('protocol')
+            component_type = args.get('component_type')
+            component_name = args.get('component_name')
+            entrypoint = f"/api/{protocol}/{component_type}/{component_name}"
+            result = await query_tools.get_api_content(entrypoint)
+
         else:
-            return [TextContent(
-                type="text",
-                text=f"Unknown tool: {name}"
-            )]
+            raise ValueError(f"Unknown tool: {name}")
+
+        return CallToolResult(content=result)
+
+    except Exception as e:
+        logger.exception("Error executing tool %s", name)
+
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=f"Error executing {name}: {str(e)}"
+                )
+            ],
+            isError=True
+        )
+
+
+# Initialize MCP server
+server = Server(
+    "traefik-mcp",
+    on_list_tools=list_tools,
+    on_call_tool=call_tool,
+)
+
+
+# ---------------------------------------------------------
+# Traefik client initialization
+# ---------------------------------------------------------
+
+async def initialize_client() -> None:
+    """Initialize Traefik client from environment variables."""
+
+    global traefik_client, query_tools
+
+    api_url = os.getenv("TRAEFIK_API_URL")
+
+    if not api_url:
+        raise ValueError(
+            "TRAEFIK_API_URL environment variable is required"
+        )
+    api_url = api_url.strip(' "\'')
     
-    except Exception as e:
-        logger.error(f"Error executing tool {name}: {str(e)}")
-        return [TextContent(
-            type="text",
-            text=f"Error executing {name}: {str(e)}"
-        )]
+    api_key = os.getenv("TRAEFIK_API_KEY")
+    if api_key: api_key = api_key.strip(' "\'')
+    
+    basic_auth_username = os.getenv("TRAEFIK_BASIC_AUTH_USERNAME")
+    if basic_auth_username: basic_auth_username = basic_auth_username.strip(' "\'')
+    
+    basic_auth_password = os.getenv("TRAEFIK_BASIC_AUTH_PASSWORD")
+    if basic_auth_password: basic_auth_password = basic_auth_password.strip(' "\'')
+
+    timeout = float(os.getenv("MCP_TIMEOUT", "30.0"))
+
+    logger.info("Initializing Traefik client for %s", api_url)
+
+    if api_key:
+        logger.info("Using API key authentication")
+
+        traefik_client = TraefikClient(
+            api_url=api_url,
+            api_key=api_key,
+            timeout=timeout
+        )
+
+    elif basic_auth_username and basic_auth_password:
+        logger.info("Using basic authentication")
+
+        traefik_client = TraefikClient(
+            api_url=api_url,
+            basic_auth_username=basic_auth_username,
+            basic_auth_password=basic_auth_password,
+            timeout=timeout
+        )
+
+    else:
+        logger.info("No authentication configured")
+
+        traefik_client = TraefikClient(
+            api_url=api_url,
+            timeout=timeout
+        )
+
+    query_tools = QueryTools(traefik_client)
+
+    if await traefik_client.health_check():
+        logger.info("Successfully connected to Traefik API")
+    else:
+        logger.warning(
+            "Failed to connect to Traefik API - "
+            "server will start but tools may fail"
+        )
 
 
-async def main():
-    """Main entry point for the server."""
-    try:
-        # Initialize the Traefik client
-        await initialize_client()
-        
-        # Start the MCP server
-        logger.info("Starting Traefik MCP server")
-        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-            await server.run(
-                read_stream, 
-                write_stream, 
-                server.create_initialization_options()
+# ---------------------------------------------------------
+# Starlette SSE application
+# ---------------------------------------------------------
+
+def create_starlette_app() -> Starlette:
+
+    sse_path = os.getenv("MCP_SSE_PATH", "/mcp/sse").lower().strip(' "\'')
+    message_path = os.getenv("MCP_MESSAGE_PATH", "/mcp/message").lower().strip(' "\'')
+
+    logger.info(
+        "Running in HTTP/SSE mode (SSE: %s, Message: %s)",
+        sse_path,
+        message_path
+    )
+
+    sse_transport = mcp.server.sse.SseServerTransport(
+        endpoint=message_path,
+        security_settings=None
+    )
+
+    async def handle_root(request):
+        return JSONResponse({
+            "service": "Traefik MCP Server",
+            "sse_endpoint": sse_path,
+            "message_endpoint": message_path,
+        })
+
+    async def handle_sse_starlette(request):
+
+        try:
+            async with sse_transport.connect_sse(
+                request.scope,
+                request.receive,
+                request._send
+            ) as (read_stream, write_stream):
+
+                await server.run(
+                    read_stream,
+                    write_stream,
+                    server.create_initialization_options()
+                )
+
+        except Exception:
+            logger.exception("SSE handler error")
+
+            return JSONResponse(
+                status_code=500,
+                content={"error": "MCP SSE connection failed"}
             )
-        
-    except Exception as e:
-        logger.error(f"Failed to start server: {str(e)}")
+
+    routes = [
+        Route(
+            "/",
+            endpoint=handle_root,
+            methods=["GET"],
+            name="root"
+        ),
+        Route(
+            sse_path,
+            endpoint=handle_sse_starlette,
+            methods=["GET"],
+            name="sse"
+        ),
+        Mount(
+            message_path,
+            app=sse_transport.handle_post_message,
+            name="messages"
+        ),
+    ]
+
+    return Starlette(routes=routes)
+
+
+# ---------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------
+
+async def main() -> None:
+    """Main entry point for the server."""
+
+    try:
+        logger.info("Starting Traefik MCP server")
+
+        await initialize_client()
+
+        transport_mode = os.getenv(
+            "MCP_TRANSPORT",
+            "stdio"
+        ).lower().strip(' "\'')
+
+        if transport_mode == "stdio":
+
+            logger.info("Starting MCP server using STDIO transport")
+
+            async with mcp.server.stdio.stdio_server() as (
+                read_stream,
+                write_stream
+            ):
+
+                await server.run(
+                    read_stream,
+                    write_stream,
+                    server.create_initialization_options()
+                )
+
+        elif transport_mode in ("http", "sse"):
+
+            host = os.getenv("MCP_HOST", "0.0.0.0")
+            port = int(os.getenv("MCP_PORT", "8080"))
+
+            logger.info(
+                "Starting HTTP/SSE server on %s:%s",
+                host,
+                port
+            )
+
+            starlette_app = create_starlette_app()
+
+            config = uvicorn.Config(
+                app=starlette_app,
+                host=host,
+                port=port,
+                access_log=True
+            )
+
+            uv_server = uvicorn.Server(config)
+
+            await uv_server.serve()
+
+        else:
+            raise ValueError(
+                f"Unknown transport mode '{transport_mode}', "
+                "must be 'stdio', 'http' or 'sse'."
+            )
+
+    except Exception:
+        logger.exception("Failed to start server")
         raise
 
 
-def cli_main():
+# ---------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------
+
+def cli_main() -> None:
     """CLI entry point that handles async main."""
+
     asyncio.run(main())
 
 

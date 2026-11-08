@@ -70,7 +70,7 @@ class TestTraefikClient:
             mock_request.assert_called_once_with('GET', '/api/overview')
     
     @pytest.mark.asyncio
-    async def test_get_routers(self):
+    async def test_get_component_list(self):
         """Test getting routers data."""
         mock_response = {
             "router1@docker": {
@@ -89,67 +89,12 @@ class TestTraefikClient:
             mock_request.return_value = mock_response
             
             client = TraefikClient("http://localhost:8080")
-            result = await client.get_routers()
+            result = await client.get_api_content('/api/http/routers')
             
             assert len(result) == 2
             assert result["router1@docker"]["rule"] == "Host(`example.com`)"
             assert result["router2@docker"]["rule"] == "Host(`test.com`)"
             mock_request.assert_called_once_with('GET', '/api/http/routers')
-    
-    @pytest.mark.asyncio
-    async def test_get_routers_with_provider(self):
-        """Test getting routers with provider filter."""
-        with patch.object(TraefikClient, '_make_request', new_callable=AsyncMock) as mock_request:
-            mock_request.return_value = {}
-            
-            client = TraefikClient("http://localhost:8080")
-            await client.get_routers(provider="docker")
-            
-            mock_request.assert_called_once_with('GET', '/api/http/routers?provider=docker')
-    
-    @pytest.mark.asyncio
-    async def test_get_services(self):
-        """Test getting services data."""
-        mock_response = {
-            "service1@docker": {
-                "loadBalancer": {
-                    "servers": [
-                        {"url": "http://localhost:8081", "weight": 1}
-                    ]
-                }
-            }
-        }
-        
-        with patch.object(TraefikClient, '_make_request', new_callable=AsyncMock) as mock_request:
-            mock_request.return_value = mock_response
-            
-            client = TraefikClient("http://localhost:8080")
-            result = await client.get_services()
-            
-            assert len(result) == 1
-            assert "loadBalancer" in result["service1@docker"]
-            mock_request.assert_called_once_with('GET', '/api/http/services')
-    
-    @pytest.mark.asyncio
-    async def test_get_middlewares(self):
-        """Test getting middlewares data."""
-        mock_response = {
-            "middleware1@docker": {
-                "addPrefix": {
-                    "prefix": "/api"
-                }
-            }
-        }
-        
-        with patch.object(TraefikClient, '_make_request', new_callable=AsyncMock) as mock_request:
-            mock_request.return_value = mock_response
-            
-            client = TraefikClient("http://localhost:8080")
-            result = await client.get_middlewares()
-            
-            assert len(result) == 1
-            assert "addPrefix" in result["middleware1@docker"]
-            mock_request.assert_called_once_with('GET', '/api/http/middlewares')
     
     @pytest.mark.asyncio
     async def test_authentication_error(self):

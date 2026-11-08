@@ -33,6 +33,7 @@ venv/
 *.swp
 *.swo
 *~
+.github/
 
 # Testing
 .pytest_cache/
