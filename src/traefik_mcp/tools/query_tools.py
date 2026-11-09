@@ -97,10 +97,11 @@ class Formatter:
         if short: 
             return "\n".join(output)
 
+        output.append(f"### Details")
         output.append(f"- **http**: {entrypoint.http}")
         output.append(f"- **transport**: ")
-        output.append(f"    - **life cyle*: {entrypoint.transport.get("lifeCycle","N/A")}")
-        output.append(f"    - **responding timeouts*: {entrypoint.transport.get("respondingTimeouts","N/A")}")
+        output.append(f"    - **life cyle**: {entrypoint.transport.get("lifeCycle","N/A")}")
+        output.append(f"    - **responding timeouts**: {entrypoint.transport.get("respondingTimeouts","N/A")}")
         output.append(f"- **forwarded headers**: {entrypoint.forwardedHeaders}")
     
         output.append("")

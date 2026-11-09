@@ -21,10 +21,10 @@ class TestServerIntegration:
         expected_tools = [
             "get_version",
             "get_overview",
-            "get_entrypoint_list",
-            "get_entrypoint_details",
-            "get_component_list",
-            "get_component_details"
+            "get_entrypoint",
+            "get_router",
+            "get_middleware",
+            "get_service"
         ]
         
         for expected_tool in expected_tools:

@@ -6,47 +6,9 @@ dans query_tools.py.
 """
 import pytest
 from traefik_mcp.server import list_tools, call_tool, initialize_client
-
-# Import dynamique pour contourner le problème d'import avec modules z_
-def get_imported_functions():
-    """Importez dynamiquement les fonctions depuis query_tools.py."""
-    try:
-        from traefik_mcp.tools.query_tools import (
-            format_overview as fo,
-            format_version as fv,
-            format_generic as fg,
-            _format_generic_recursive as fgr,
-        )
-        from traefik_mcp.traefik.models import TraefikOverview
-        return fo, fv, fg, fgr, TraefikOverview
-    except ImportError:
-        # Import alternatif via src (mais peut ne pas fonctionner à cause de z_)
-        try:
-            from src.traefik_mcp.tools.query_tools import (
-                format_overview,
-                format_version,
-                format_generic,
-                _format_generic_recursive as fgr
-            )
-            from src.traefik_mcp.traefik.models import TraefikOverview
-            
-            return (
-                format_overview,
-                format_version,
-                format_generic,
-                fgr,
-                TraefikOverview
-            )
-        except ImportError:
-            raise ImportError(
-                "Impossible d'importer query_tools.py ou traefik/models.py. "
-                "Vérifier que src/traefik_mcp est dans le PYTHONPATH."
-            ) from None
-
-
-# Charger les fonctions dynamiquement au début du test
-_functions = get_imported_functions()
-format_overview, format_version, format_generic, _format_generic_recursive, TraefikOverview = _functions
+from traefik_mcp.tools.query_tools import Formatter, QueryTools
+from traefik_mcp.traefik.models import Middleware, Router, Service, EntryPoint
+from traefik_mcp.traefik.models import Overview, Version
 
 
 @pytest.fixture
@@ -77,204 +39,280 @@ def mock_traefik_overview():
             "local"
         ]
     }
-    return TraefikOverview(**data)
-
+    return Overview(**data)
 
 @pytest.fixture
 def mock_version():
     """Fixture avec des données de version typiques."""
-    return {
-        "Version": "3.0.0-experimental",
-        "Codename": "Gorilla Edition",
-        "startDate": "2024-11-04T21:08:28Z"
+    data = {
+        "Version": "1.2.3",
+        "Codename": "test-codename",
+        "startDate": "1592-14-03"
     }
+    return Version(**data)
+
+@pytest.fixture
+def mock_middleware_1():
+    """Fixture avec des données de version typiques."""
+    data = {
+        "chain":{
+            "middlewares":[
+                "crowdsec-bouncer@file",
+                "geoip@file",
+                "geoblock-fr@file"
+                ]
+            },
+        "status":"enabled",
+        "usedBy":[
+            "authelia@file",
+            "cloud-router@file"
+            ],
+        "name":"check-ip@file",
+        "provider":"file",
+        "type":"chain"
+        }
+    data = Middleware.parseData(protocol='http',data=data)
+    return Middleware(**data)
+    
+@pytest.fixture
+def mock_middleware_2():
+    """Fixture avec des données de version typiques."""
+    data = {
+        "plugin":{
+            "geoblock":{
+                "allowLocalRequests":"true",
+                "allowUnknownCountries":"false",
+                "api":"https://get.geojs.io/v1/ip/country/{ip}",
+                "apiTimeoutMs":"750",
+                "cacheSize":"15",
+                "countries":["FR","CA"],
+                "forceMonthlyUpdate":"true",
+                "logAllowedRequests":"false",
+                "logApiRequests":"true",
+                "logLocalRequests":"false",
+                "unknownCountryApiResponse":"nil"
+                }
+            },
+        "status":"enabled",
+        "name":"geoblock-fr@file",
+        "provider":"file",
+        "type":"geoblock"
+        }
+    data = Middleware.parseData(protocol='http',data=data)
+    return Middleware(**data)
+
+@pytest.fixture
+def mock_router():
+    data = {
+        "entryPoints":["traefik"],
+        "service":"api@internal",
+        "rule":"PathPrefix(`/api`)",
+        "ruleSyntax":"v3",
+        "priority":9223372036854775806,
+        "observability":{
+            "accessLogs":True,
+            "tracing":True,
+            "metrics":True
+            },
+        "status":"enabled",
+        "using":["traefik"],
+        "name":"api@internal",
+        "provider":"internal"
+        }
+    data = Router.parseData(protocol='http',data=data)
+    return Router(**data)
+
+@pytest.fixture
+def mock_service():
+    data = {
+        "loadBalancer":{
+            "servers":[{"url":"http://public-cloud:80"}],
+            "passHostHeader":True,
+            "responseForwarding":{"flushInterval":"100ms"}
+            },
+        "status":"enabled",
+        "usedBy":["cloud-router@file"],
+        "serverStatus":{"http://public-cloud:80":"UP"},
+        "name":"cloud-service@file",
+        "provider":"file",
+        "type":"loadbalancer"
+        }
+    data = Service.parseData(protocol='http',data=data)
+    return Service(**data)
+
+@pytest.fixture
+def mock_entrypoint():
+    data = {
+        "address":":443",
+        "transport":{
+            "lifeCycle":{
+                "graceTimeOut":"10s"
+            },
+            "respondingTimeouts":{
+                "readTimeout":"30m0s",
+                "writeTimeout":"30m0s",
+                "idleTimeout":"3m0s"
+                }
+            },
+        "forwardedHeaders":{
+            "trustedIPs":[
+                "127.0.0.1/32",
+                "192.168.1.0/24",
+                "100.64.0.0/10"
+                ]
+            },
+        "http":{
+            "tls":{"options":"default"},
+            "sanitizePath":True,
+            "maxHeaderBytes":1048576
+            },
+        "http2":{"maxConcurrentStreams":250},
+        "udp":{"timeout":"3s"},
+        "name":"websecure"
+        }
+    data = EntryPoint.parseData(data=data)
+    return EntryPoint(**data)
+
+
 
 
 class TestFormatOverview:
-    """Tests pour format_overview."""
     
     def test_format_overview_basic(self, mock_traefik_overview):
-        """Test de base avec un overview simple."""
-        result = format_overview(mock_traefik_overview)
+        result = Formatter.format_overview(mock_traefik_overview)
         
-        # Vérification de la structure de base
-        assert "## Traefik Overview" in result
-        assert "### Components definition" in result
+        assert "# Traefik Overview" in result
+        assert "http" in result
+        assert "tcp" in result
+        assert "udp" in result
+        assert "entrypoint" in result
         
-        # Vérifier que toutes les valeurs sont présentes
-        assert "5" in result  # total_routers
-        assert "12" in result  # total_services
-        assert "8" in result  # total_middlewares
-    
-    def test_format_overview_with_features_and_providers(
-        self, mock_traefik_overview
-    ):
-        """Test avec features et providers."""
-        result = format_overview(mock_traefik_overview)
-        
-        # Vérifier que les sections sont présentes (avec ou sans contenu)
-        assert "### Features" in result or "### Providers" in result
+        assert "5" in result
+        assert "12" in result
+        assert "8" in result
     
     def test_format_overview_section_titles(self, mock_traefik_overview):
-        """Test les titres de section."""
-        result = format_overview(mock_traefik_overview)
+        result = Formatter.format_overview(mock_traefik_overview)
         
-        # Vérifier la présence des différents titres de section
-        assert "Summary" in result
-        assert "Components definition" in result
+        assert "**Routers**" in result
+        assert "**Middlewares**" in result
+        assert "**Services**" in result
+        assert "**Entrypoints**" in result
+        assert "**Protocols**" in result
+        assert "## Summary" in result
         
-    def test_format_version_empty_fields(self, mock_version):
-        """Test avec des champs vides."""
-        version_data = {
-            "Version": "",
-            "Codename": None,
-            "startDate": ""
-        }
-        result = format_version(version_data)
-        
-        # La fonction devrait gérer les valeurs vides sans crasher
-        assert "## Traefik version" in result
-        
-    def test_format_version_with_valid_data(self, mock_version):
-        """Test avec des données de version valides."""
-        result = format_version(mock_version)
-        
-        # Vérifier que toutes les informations sont présentes
-        assert "- **Version** : 3.0.0-experimental" in result
-        assert "Gorilla Edition" in result
-        assert "2024-11-04T21:08:28Z" in result
-        
-    def test_format_version_empty_fields(self):
-        """Test avec des champs vides."""
-        version_data = {
-            "Version": "",
-            "Codename": None,
-            "startDate": ""
-        }
-        result = format_version(version_data)
-        
-        assert "## Traefik version" in result
+class TestFormatVersion:
 
+    def test_format_version_basic(self, mock_version):
+        result = Formatter.format_version(mock_version)
+        
+        assert "# Traefik version" in result
+        assert "**Version**" in result
+        assert "**Codename**" in result
+        assert "**startDate**" in result
 
-class TestFormatGeneric:
-    """Tests pour format_generic."""
-    
-    def test_format_generic_empty(self):
-        """Test avec un objet vide."""
-        result = format_generic({})
-        # Un dict vide devrait retourner une chaîne vide ou quelque chose de raisonnable
-        assert len(result) == 0
-    
-    def test_format_generic_nested_structure(self):
-        """Test avec une structure JSON imbriquée."""
-        data = {
-            "name": "test-service",
-            "ports": [80, 443],
-            "labels": {
-                "env": "production"
-            }
-        }
-        result = format_generic(data)
-        
-        assert "- **`test-service`**" in result
-    
-    def test_format_generic_with_title(self):
-        """Test avec un titre."""
-        data = {"key": "value"}
-        result = format_generic(data, title="Custom Title")
-        
-        # Vérifier le titre dans le résultat
-        assert "Custom Title" in result
-        
-    def test_format_generic_special_keys(self):
-        """Test avec des clés spéciales comme 'name' et 'rule'."""
-        data = {
-            "name": "my-router",
-            "rule": "PathPrefix `/api`",
-            "other": "value"
-        }
-        result = format_generic(data)
-        
-        # Vérifier la clé spéciale 'name'
-        assert "**`my-router`**" in result
-        # Vérifier que 'rule' est traité comme une clé spéciale
-        assert "Rule:" in result
-    
-    def test_format_generic_null_and_empty(self):
-        """Test avec null et chaînes vides."""
-        data = {
-            "null_field": None,
-            "empty_string": ""
-        }
-        result = format_generic(data)
-        
-        # La fonction devrait gérer ces cas sans crasher
-        assert "- null_field:" in result
-    
-    def test_format_generic_with_title_false(self):
-        """Test avec use_tables=False."""
-        data = {"key": "value"}
-        result = format_generic(data, use_tables=False)
-        
-        assert "key" in result
+        assert "1.2.3" in result
+        assert "test-codename" in result
+        assert "1592-14-03" in result
 
+class TestFormatMiddleware:
 
-class TestFormatGenericRecursive:
-    """Tests pour _format_generic_recursive."""
-    
-    def test_format_generic_recursive_empty_list(self):
-        """Test avec une liste vide."""
-        result = _format_generic_recursive([])
+    def test_format_middleware_short(self, mock_middleware_1):
+        result = Formatter.format_middleware(mock_middleware_1, True)
         
-        # Une liste vide retourne une chaîne vide
-        assert result == ""
-        
-    def test_format_generic_recursive_nested_dict(self):
-        """Test avec un dictionnaire imbriqué."""
-        data = {
-            "level1": {
-                "level2": {
-                    "level3": "value"
-                }
-            }
-        }
-        result = _format_generic_recursive(data)
-        
-        # Vérifier la structure imbriquée
-        assert "- level1:" in result
-        
-    def test_format_generic_recursive_bool_values(self):
-        """Test avec des valeurs booléennes."""
-        data = {
-            "enabled": True,
-            "disabled": False
-        }
-        result = _format_generic_recursive(data)
-        
-        # Les booléens doivent être formatés comme `True` ou `true`
-        assert ("`True`" in result or "`true`" in result) and \
-               ("`False`" in result or "`false`" in result)
+        assert "## Middleware" in result
+        assert "**protocol**" in result
+        assert "**provider**" in result
+        assert "**type**" in result
+        assert "**status**" in result
+        assert not "### Details" in result
 
+        assert "check-ip@file" in result
+        assert "chain" in result
+        assert "authelia@file" in result
+        assert "enabled" in result
 
-class TestIntegration:
-    """Tests d'intégration pour le flux complet."""
-    
-    def test_format_overview_and_version_together(self, mock_traefik_overview, mock_version):
-        """Test l'utilisation conjointe de format_overview et format_version."""
-        overview_result = format_overview(mock_traefik_overview)
-        version_result = format_version(mock_version)
+    def test_format_middleware_long(self, mock_middleware_2):
+        result = Formatter.format_middleware(mock_middleware_2)
+
+        assert "### Details" in result
+        assert "FR" in result
+        assert "geoblock" in result
+        assert "unknownCountryApiResponse" in result
+
+class TestFormatRouter:
+
+    def test_format_router_short(self, mock_router):
+        result = Formatter.format_router(mock_router, True)
         
-        # Les deux résultats devraient être générés correctement
-        assert len(overview_result) > 0
-        assert len(version_result) > 0
+        assert "## Router" in result
+        assert "**protocol**" in result
+        assert "**provider**" in result
+        assert "**rule**" in result
+        assert "**service**" in result
+        assert "**status**" in result
+        assert not "### Details" in result
+
+        assert "api@internal" in result
+        assert "PathPrefix(`/api`)" in result
+        assert "traefik" in result
+        assert "enabled" in result
+
+    def test_format_router_long(self, mock_router):
+        result = Formatter.format_router(mock_router)
+
+        assert "### Details" in result
+        assert "priority" in result
+        assert "observability" in result
+        assert "metrics" in result
+
+class TestFormatService:
+
+    def test_format_service_short(self, mock_service):
+        result = Formatter.format_service(mock_service, True)
         
-    def test_format_generic_with_complex_json_string(self):
-        """Test avec une chaîne JSON complexe."""
-        json_str = '''{"config": {"timeout": 30, "retries": true}}'''
-        result = format_generic(json_str)
+        assert "## Service" in result
+        assert "**protocol**" in result
+        assert "**provider**" in result
+        assert "**type**" in result
+        assert "**server status**" in result
+        assert not "### Details" in result
+
+        assert "http://public-cloud:80" in result
+        assert "cloud-service@file" in result
+        assert "loadbalancer" in result
+        assert "enabled" in result
+
+    def test_format_service_long(self, mock_service):
+        result = Formatter.format_service(mock_service)
+
+        assert "### Details" in result
+        assert "passHostHeader" in result
+        assert "flushInterval" in result
+        assert "url" in result
+
+class TestFormatEntryPoint:
+
+    def test_format_entrypoint_short(self, mock_entrypoint):
+        result = Formatter.format_entrypoint(mock_entrypoint, True)
         
-        # La chaîne devrait être parsée et formatée correctement
-        assert "config:" in result
+        assert "## Entrypoint" in result
+        assert "**address**" in result
+        assert not "### Details" in result
+
+        assert ":443" in result
+
+    def test_format_entrypoint_long(self, mock_entrypoint):
+        result = Formatter.format_entrypoint(mock_entrypoint)
+
+        assert "### Details" in result
+        assert "**http**" in result
+        assert "**transport**" in result
+        assert "**forwarded headers**" in result
+        assert "**life cyle**" in result
+        
+        assert "tls" in result
+        assert "timeout" in result
 
 
 if __name__ == "__main__":
