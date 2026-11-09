@@ -9,7 +9,6 @@ Uses Starlette ASGI app for HTTP mode with proper SSE routing.
 import asyncio
 import logging
 import os
-from typing import Any
 
 import uvicorn
 
@@ -30,7 +29,7 @@ from mcp.types import (
 import mcp.server.stdio
 import mcp.server.sse
 
-from .traefik.api_client import TraefikClient, TraefikError
+from .traefik.api_client import TraefikClient
 from .tools.query_tools import QueryTools
 
 
@@ -74,66 +73,80 @@ async def list_tools(
             }
         ),
         Tool(
-            name="get_entrypoint_list",
-            description="Get the list of entrypoints",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        ),
-        Tool(
-            name="get_entrypoint_details",
-            description="Get the details about an entrypoint",
+            name="get_entrypoint",
+            description="Get informations about entrypoints",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "entrypoint_name": {
+                    "name": {
                         "type": "string",
-                        "description": "Name of the entrypoint"
+                        "description": "[Optional] Name of the entrypoint (return detailled informations)"
                     },
                 },
                 "required": []
             }
         ),
         Tool(
-            name="get_component_list",
-            description="Get a list of components",
+            name="get_middleware",
+            description="Get information about middlewares",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "protocol": {
                         "type": "string",
-                        "description": "Protocol of the components, in ['http', 'tcp', 'udp']"
+                        "description": "Protocol of the middleware, in ['http', 'tcp', 'udp']"
                     },
-                    "component_type": {
+                    "name": {
                         "type": "string",
-                        "description": "Type of component, in ['middlewares', 'routers', 'services']"
+                        "description": """Name of the middleware including its provider i.e. `name@provider`
+                                          Returns detailled informations about the middleware
+                                          Consult `get_service` without name for list of middlewares
+                                          """
                     }
                 },
-                "required": ["protocol","component_type"]
+                "required": ["protocol"]
             }
         ),
         Tool(
-            name="get_component_details",
-            description="Get the details about a component",
+            name="get_service",
+            description="Get information about services",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "protocol": {
                         "type": "string",
-                        "description": "Protocol of the component, in ['http', 'tcp', 'udp']"
+                        "description": "Protocol of the service, in ['http', 'tcp', 'udp']"
                     },
-                    "component_type": {
+                    "name": {
                         "type": "string",
-                        "description": "Type of component, in ['middlewares', 'routers', 'services']"
-                    },
-                    "component_name": {
-                        "type": "string",
-                        "description": "Name of the component including its provider i.e. `name@provider`"
+                        "description": """Name of the service including its provider i.e. `name@provider`
+                                          Returns detailled informations about the service
+                                          Consult `get_service` without name for list of services
+                                          """
                     }
                 },
-                "required": ["protocol", "component_type", "component_name"]
+                "required": ["protocol"]
+            }
+        ),
+        Tool(
+            name="get_router",
+            description="Get information about routers",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "protocol": {
+                        "type": "string",
+                        "description": "Protocol of the router, in ['http', 'tcp', 'udp']"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": """Name of the router including its provider i.e. `name@provider`
+                                          Returns detailled informations about the router
+                                          Consult `get_router` without name for list of routers
+                                          """
+                    }
+                },
+                "required": ["protocol"]
             }
         )
     ]
@@ -168,26 +181,20 @@ async def call_tool(
         elif name == "get_version":
             result = await query_tools.get_version()
 
-        elif name == "get_entrypoint_list":
-            result = await query_tools.get_api_content('/api/entrypoints')
+        elif name == "get_entrypoint":
+            result = await query_tools.get_entrypoint(name=args.get('name', None))
 
-        elif name == "get_entrypoint_details":
-            entrypoint_name = args.get('entrypoint_name')
-            entrypoint = f"/api/entrypoints/{entrypoint_name}"
-            result = await query_tools.get_api_content(entrypoint)
+        elif name == "get_middleware":
+            result = await query_tools.get_middleware(protocol=args.get('protocol','http'),
+                                                      name=args.get('name', None))
 
-        elif name == "get_component_list":
-            protocol = args.get('protocol')
-            component_type = args.get('component_type')
-            entrypoint = f"/api/{protocol}/{component_type}"
-            result = await query_tools.get_api_content(entrypoint)
+        elif name == "get_service":
+            result = await query_tools.get_service(protocol=args.get('protocol','http'),
+                                                      name=args.get('name', None))
 
-        elif name == "get_component_details":
-            protocol = args.get('protocol')
-            component_type = args.get('component_type')
-            component_name = args.get('component_name')
-            entrypoint = f"/api/{protocol}/{component_type}/{component_name}"
-            result = await query_tools.get_api_content(entrypoint)
+        elif name == "get_router":
+            result = await query_tools.get_router(protocol=args.get('protocol','http'),
+                                                      name=args.get('name', None))
 
         else:
             raise ValueError(f"Unknown tool: {name}")
