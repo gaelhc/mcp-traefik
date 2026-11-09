@@ -19,7 +19,7 @@ This MCP server enables AI assistants to query and manage Traefik configurations
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.13 or higher
 - [uv](https://github.com/astral-sh/uv) package manager
 - A running Traefik instance with API enabled
 
@@ -52,30 +52,11 @@ This MCP server enables AI assistants to query and manage Traefik configurations
    cd traefik-mcp
    ```
 
-2. Build the Docker image:
+2. Adapt `docker-compose.yml` environment and run:
    ```bash
-   docker build -t traefik-mcp .
+   docker compose up -d
    ```
 
-3. Run the container:
-   ```bash
-   # Basic run
-   docker run -it --rm traefik-mcp
-
-   # With environment variables
-   docker run -it --rm \
-     -e TRAEFIK_API_URL=http://traefik:8080 \
-     -e TRAEFIK_BASIC_AUTH_USERNAME=admin \
-     -e TRAEFIK_BASIC_AUTH_PASSWORD=admin \
-     traefik-mcp
-
-   # Background service
-   docker run -d --name traefik-mcp \
-     -e TRAEFIK_API_URL=http://traefik:8080 \
-     -e TRAEFIK_BASIC_AUTH_USERNAME=admin \
-     -e TRAEFIK_BASIC_AUTH_PASSWORD=admin \
-     traefik-mcp
-   ```
 
 ## Configuration
 
@@ -91,6 +72,7 @@ Set the following environment variables:
 
 ### Optional
 - `MCP_LOG_LEVEL`: Logging level (default: INFO)
+
 
 **Note**: API key authentication takes precedence over basic authentication if both are configured.
 
@@ -259,6 +241,8 @@ See [TASKS.md](TASKS.md) for current development tasks and [PLANNING.md](PLANNIN
 Contributions are welcome! Please read our contributing guidelines and submit pull requests.
 
 ## License
+
+This depot is a fork from `https://github.com/theupriser/treafik-mcp`.
 
 MIT License - See LICENSE file for details
 

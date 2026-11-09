@@ -1,281 +1,328 @@
-"""
-Tests pour les outils de requête Traefik.
+"""Tests for QueryTools."""
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
 
-Ce module contient les tests unitaires pour les fonctions de formatage
-dans query_tools.py.
-"""
-import pytest
-from traefik_mcp.server import list_tools, call_tool, initialize_client
-
-# Import dynamique pour contourner le problème d'import avec modules z_
-def get_imported_functions():
-    """Importez dynamiquement les fonctions depuis query_tools.py."""
-    try:
-        from traefik_mcp.tools.query_tools import (
-            format_overview as fo,
-            format_version as fv,
-            format_generic as fg,
-            _format_generic_recursive as fgr,
-        )
-        from traefik_mcp.traefik.models import TraefikOverview
-        return fo, fv, fg, fgr, TraefikOverview
-    except ImportError:
-        # Import alternatif via src (mais peut ne pas fonctionner à cause de z_)
-        try:
-            from src.traefik_mcp.tools.query_tools import (
-                format_overview,
-                format_version,
-                format_generic,
-                _format_generic_recursive as fgr
-            )
-            from src.traefik_mcp.traefik.models import TraefikOverview
-            
-            return (
-                format_overview,
-                format_version,
-                format_generic,
-                fgr,
-                TraefikOverview
-            )
-        except ImportError:
-            raise ImportError(
-                "Impossible d'importer query_tools.py ou traefik/models.py. "
-                "Vérifier que src/traefik_mcp est dans le PYTHONPATH."
-            ) from None
+from mcp.types import TextContent
+from traefik_mcp.tools.query_tools import QueryTools
 
 
-# Charger les fonctions dynamiquement au début du test
-_functions = get_imported_functions()
-format_overview, format_version, format_generic, _format_generic_recursive, TraefikOverview = _functions
+class TestQueryToolsGetOverview(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_overview method of QueryTools."""
 
-
-@pytest.fixture
-def mock_traefik_overview():
-    """Fixture avec des données d'overview typiques."""
-    data = {
-        "http": {
-            "routers": {"total": 3},
-            "services": {"total": 8},
-            "middlewares": {"total": 5}
-        },
-        "tcp": {
-            "routers": {"total": 2},
-            "services": {"total": 4},
-            "middlewares": {"total": 3}
-        },
-        "udp": {
-            "routers": {"total": 0},
-            "services": {"total": 0},
-            "middlewares": {"total": 0}
-        },
-        "features": {
-            "traefik-v1": "true",
-            "global": "enabled"
-        },
-        "providers": [
-            "default",
-            "local"
-        ]
-    }
-    return TraefikOverview(**data)
-
-
-@pytest.fixture
-def mock_version():
-    """Fixture avec des données de version typiques."""
-    return {
-        "Version": "3.0.0-experimental",
-        "Codename": "Gorilla Edition",
-        "startDate": "2024-11-04T21:08:28Z"
-    }
-
-
-class TestFormatOverview:
-    """Tests pour format_overview."""
-    
-    def test_format_overview_basic(self, mock_traefik_overview):
-        """Test de base avec un overview simple."""
-        result = format_overview(mock_traefik_overview)
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
         
-        # Vérification de la structure de base
-        assert "## Traefik Overview" in result
-        assert "### Components definition" in result
-        
-        # Vérifier que toutes les valeurs sont présentes
-        assert "5" in result  # total_routers
-        assert "12" in result  # total_services
-        assert "8" in result  # total_middlewares
-    
-    def test_format_overview_with_features_and_providers(
-        self, mock_traefik_overview
-    ):
-        """Test avec features et providers."""
-        result = format_overview(mock_traefik_overview)
-        
-        # Vérifier que les sections sont présentes (avec ou sans contenu)
-        assert "### Features" in result or "### Providers" in result
-    
-    def test_format_overview_section_titles(self, mock_traefik_overview):
-        """Test les titres de section."""
-        result = format_overview(mock_traefik_overview)
-        
-        # Vérifier la présence des différents titres de section
-        assert "Summary" in result
-        assert "Components definition" in result
-        
-    def test_format_version_empty_fields(self, mock_version):
-        """Test avec des champs vides."""
-        version_data = {
-            "Version": "",
-            "Codename": None,
-            "startDate": ""
+        self.sample_data = {
+            "totalRouters": 12,
+            "totalServices": 12,
+            "totalMiddlewares": 16,
+            "router": {
+                "http": 12,
+                "tcp": 0,
+                "udp": 0,
+            },
+            "service": {
+                "http": 12,
+                "tcp": 0,
+                "udp": 0,
+            },
+            "middleware": {
+                "http": 16,
+                "tcp": 0,
+                "udp": 0,
+            },
+            "features": {
+                "tracing": "",
+                "metrics": "Prometheus",
+                "accessLog": "True",
+            },
+            "providers": ["File"],
         }
-        result = format_version(version_data)
+
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_overview_successful(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
         
-        # La fonction devrait gérer les valeurs vides sans crasher
-        assert "## Traefik version" in result
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_overview = AsyncMock(return_value=self.sample_data)
         
-    def test_format_version_with_valid_data(self, mock_version):
-        """Test avec des données de version valides."""
-        result = format_version(mock_version)
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
         
-        # Vérifier que toutes les informations sont présentes
-        assert "- **Version** : 3.0.0-experimental" in result
-        assert "Gorilla Edition" in result
-        assert "2024-11-04T21:08:28Z" in result
+        # Call the method
+        result = await query_tools.get_overview()
         
-    def test_format_version_empty_fields(self):
-        """Test avec des champs vides."""
-        version_data = {
-            "Version": "",
-            "Codename": None,
-            "startDate": ""
-        }
-        result = format_version(version_data)
-        
-        assert "## Traefik version" in result
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
 
 
-class TestFormatGeneric:
-    """Tests pour format_generic."""
-    
-    def test_format_generic_empty(self):
-        """Test avec un objet vide."""
-        result = format_generic({})
-        # Un dict vide devrait retourner une chaîne vide ou quelque chose de raisonnable
-        assert len(result) == 0
-    
-    def test_format_generic_nested_structure(self):
-        """Test avec une structure JSON imbriquée."""
-        data = {
-            "name": "test-service",
-            "ports": [80, 443],
-            "labels": {
-                "env": "production"
+
+class TestQueryToolsGetVersion(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_version method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "Version": "1.2.3",
+            "Codename": "test-codename",
+            "startDate": "1592-14-03"
             }
-        }
-        result = format_generic(data)
+
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_version(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
         
-        assert "- **`test-service`**" in result
-    
-    def test_format_generic_with_title(self):
-        """Test avec un titre."""
-        data = {"key": "value"}
-        result = format_generic(data, title="Custom Title")
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_version = AsyncMock(return_value=self.sample_data)
         
-        # Vérifier le titre dans le résultat
-        assert "Custom Title" in result
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
         
-    def test_format_generic_special_keys(self):
-        """Test avec des clés spéciales comme 'name' et 'rule'."""
-        data = {
-            "name": "my-router",
-            "rule": "PathPrefix `/api`",
-            "other": "value"
-        }
-        result = format_generic(data)
+        # Call the method
+        result = await query_tools.get_version()
         
-        # Vérifier la clé spéciale 'name'
-        assert "**`my-router`**" in result
-        # Vérifier que 'rule' est traité comme une clé spéciale
-        assert "Rule:" in result
-    
-    def test_format_generic_null_and_empty(self):
-        """Test avec null et chaînes vides."""
-        data = {
-            "null_field": None,
-            "empty_string": ""
-        }
-        result = format_generic(data)
-        
-        # La fonction devrait gérer ces cas sans crasher
-        assert "- null_field:" in result
-    
-    def test_format_generic_with_title_false(self):
-        """Test avec use_tables=False."""
-        data = {"key": "value"}
-        result = format_generic(data, use_tables=False)
-        
-        assert "key" in result
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
 
 
-class TestFormatGenericRecursive:
-    """Tests pour _format_generic_recursive."""
-    
-    def test_format_generic_recursive_empty_list(self):
-        """Test avec une liste vide."""
-        result = _format_generic_recursive([])
-        
-        # Une liste vide retourne une chaîne vide
-        assert result == ""
-        
-    def test_format_generic_recursive_nested_dict(self):
-        """Test avec un dictionnaire imbriqué."""
-        data = {
-            "level1": {
-                "level2": {
-                    "level3": "value"
-                }
-            }
-        }
-        result = _format_generic_recursive(data)
-        
-        # Vérifier la structure imbriquée
-        assert "- level1:" in result
-        
-    def test_format_generic_recursive_bool_values(self):
-        """Test avec des valeurs booléennes."""
-        data = {
-            "enabled": True,
-            "disabled": False
-        }
-        result = _format_generic_recursive(data)
-        
-        # Les booléens doivent être formatés comme `True` ou `true`
-        assert ("`True`" in result or "`true`" in result) and \
-               ("`False`" in result or "`false`" in result)
+class TestQueryToolsGetEntrypoint(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_entrypoint method of QueryTools."""
 
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "address":":443",
+            "transport":{
+                "lifeCycle":{
+                    "graceTimeOut":"10s"
+                },
+                "respondingTimeouts":{
+                    "readTimeout":"30m0s",
+                    "writeTimeout":"30m0s",
+                    "idleTimeout":"3m0s"
+                    }
+                },
+            "forwardedHeaders":{
+                "trustedIPs":[
+                    "127.0.0.1/32",
+                    "192.168.1.0/24",
+                    "100.64.0.0/10"
+                    ]
+                },
+            "http":{
+                "tls":{"options":"default"},
+                "sanitizePath":True,
+                "maxHeaderBytes":1048576
+                },
+            "http2":{"maxConcurrentStreams":250},
+            "udp":{"timeout":"3s"},
+            "name":"websecure"
+        }
 
-class TestIntegration:
-    """Tests d'intégration pour le flux complet."""
-    
-    def test_format_overview_and_version_together(self, mock_traefik_overview, mock_version):
-        """Test l'utilisation conjointe de format_overview et format_version."""
-        overview_result = format_overview(mock_traefik_overview)
-        version_result = format_version(mock_version)
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_version(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
         
-        # Les deux résultats devraient être générés correctement
-        assert len(overview_result) > 0
-        assert len(version_result) > 0
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
         
-    def test_format_generic_with_complex_json_string(self):
-        """Test avec une chaîne JSON complexe."""
-        json_str = '''{"config": {"timeout": 30, "retries": true}}'''
-        result = format_generic(json_str)
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
         
-        # La chaîne devrait être parsée et formatée correctement
-        assert "config:" in result
+        # Call the method
+        result = await query_tools.get_entrypoint(name="websecure")
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+class TestQueryToolsGetRouter(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_router method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "entryPoints":["traefik"],
+            "service":"api@internal",
+            "rule":"PathPrefix(`/api`)",
+            "ruleSyntax":"v3",
+            "priority":9223372036854775806,
+            "observability":{
+                "accessLogs":True,
+                "tracing":True,
+                "metrics":True
+                },
+            "status":"enabled",
+            "using":["traefik"],
+            "name":"api@internal",
+            "provider":"internal"
+        }
+
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_router(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_router(protocol='http',name="api@internal")
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+class TestQueryToolsGetMiddleware(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_router method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "entryPoints":["traefik"],
+            "service":"api@internal",
+            "rule":"PathPrefix(`/api`)",
+            "ruleSyntax":"v3",
+            "priority":9223372036854775806,
+            "observability":{
+                "accessLogs":True,
+                "tracing":True,
+                "metrics":True
+                },
+            "status":"enabled",
+            "using":["traefik"],
+            "name":"api@internal",
+            "provider":"internal"
+        }
+
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_middleware(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_router(protocol='http',name="check-ip@file")
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+class TestQueryToolsGetService(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_router method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "loadBalancer":{
+                "servers":[{"url":"http://public-cloud:80"}],
+                "passHostHeader":True,
+                "responseForwarding":{"flushInterval":"100ms"}
+                },
+            "status":"enabled",
+            "usedBy":["cloud-router@file"],
+            "serverStatus":{"http://public-cloud:80":"UP"},
+            "name":"cloud-service@file",
+            "provider":"file",
+            "type":"loadbalancer"
+        }
+
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_service(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_service(protocol='http',name="cloud-service@file")
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    unittest.main()

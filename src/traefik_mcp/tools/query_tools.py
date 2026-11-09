@@ -4,180 +4,185 @@ Traefik Query Tools
 MCP tools for querying Traefik configuration and status.
 """
 import logging
-from typing import Any, Dict, List, Optional
-import json
+from typing import List
 
 from mcp.types import TextContent
 from ..traefik.api_client import TraefikClient, TraefikError
-from ..traefik.models import Router, Service, Middleware, TraefikOverview
+from ..traefik.models import Overview, Version
+from ..traefik.models import Router, Service, Middleware, EntryPoint
+from ..traefik.models import ProtocolType
 
 logger = logging.getLogger(__name__)
 
-def format_overview(overview: TraefikOverview) -> str:
-    """Format overview for display."""
-    output = ["## Traefik Overview\n"]
+class Formatter:
 
-    output.append("### Components definition")
-    output.append("- **Protocols**: 'http', 'udp', 'tcp'")
-    output.append("- **Type**: 'middlewares', 'routers', 'services'")
-    output.append("")
+    @classmethod
+    def format_overview(cls,overview: Overview) -> str:
+        """Format overview for display."""
+        output = ["# Traefik Overview\n"]
 
-    
-    output.append("### Summary")
-    output.append(f"- **Total Routers**: {overview.total_routers}")
-    output.append(f"- **Total Services**: {overview.total_services}")
-    output.append(f"- **Total Middlewares**: {overview.total_middlewares}")
-    output.append("")
-    
-    if overview.router:
-        output.append("### Routers by protocol")
-        for provider, count in overview.router.items():
-            output.append(f"- **{provider}**: {count}")
+        output.append("## Traefik-MCP usage")
+        output.append("- **Protocols**: 'http', 'udp', 'tcp'")
+        output.append("- **Entrypoints**:")
+        output.append("\t- get_entrypoint(): returns list of entrypoints")
+        output.append("\t- get_entrypoint(router_name): returns details about a entrypoint")
+        output.append("- **Routers**:")
+        output.append("\t- get_router(protocol): returns list of routers")
+        output.append("\t- get_router(protocol,router_name): returns details about a router")
+        output.append("- **Middlewares**:")
+        output.append("\t- get_middleware(protocol): returns list of middlewares")
+        output.append("\t- get_middleware(protocol,router_name): returns details about a middleware")
+        output.append("- **Services**:")
+        output.append("\t- get_service(protocol): returns list of services")
+        output.append("\t- get_service(protocol,router_name): returns details about a service")
         output.append("")
-    
-    if overview.service:
-        output.append("### Services by protocol")
-        for provider, count in overview.service.items():
-            output.append(f"- **{provider}**: {count}")
-        output.append("")
-    
-    if overview.middleware:
-        output.append("### Middlewares by protocol")
-        for provider, count in overview.middleware.items():
-            output.append(f"- **{provider}**: {count}")
-        output.append("")
-    
-    if overview.features:
-        output.append("### Features")
-        for feature, value in overview.features.items():
-            output.append(f"- **{feature}**: {value}")
-        output.append("")
-
-    if overview.providers:
-        output.append("### Providers")
-        for provider in overview.providers:
-            output.append(f"- **{provider}**")
+        output.append("**NEVER REQUEST FOR DETAILS ABOUT A COMPONENT BEFORE REQUESTING FOR A LIST OF COMPONENTS")
         output.append("")
         
-    return "\n".join(output)
+        output.append("## Summary")
+        output.append(f"- **Total Routers**: {overview.total_routers}")
+        output.append(f"- **Total Services**: {overview.total_services}")
+        output.append(f"- **Total Middlewares**: {overview.total_middlewares}")
+        output.append("")
+        
+        if overview.router:
+            output.append("## Routers by protocol")
+            for provider, count in overview.router.items():
+                output.append(f"- **{provider}**: {count}")
+            output.append("")
+        
+        if overview.service:
+            output.append("## Services by protocol")
+            for provider, count in overview.service.items():
+                output.append(f"- **{provider}**: {count}")
+            output.append("")
+        
+        if overview.middleware:
+            output.append("## Middlewares by protocol")
+            for provider, count in overview.middleware.items():
+                output.append(f"- **{provider}**: {count}")
+            output.append("")
+        
+        if overview.features:
+            output.append("## Features")
+            for feature, value in overview.features.items():
+                output.append(f"- **{feature}**: {value}")
+            output.append("")
 
-def format_version(version: dict) -> str:
-    output = ["## Traefik version"]
-    output.append(f"- **Version** : {version['Version']}")
-    output.append(f"- **Codename** : {version['Codename']}")
-    output.append(f"- **startDate** : {version['startDate']}")
-    return "\n".join(output)
+        if overview.providers:
+            output.append("## Providers")
+            for provider in overview.providers:
+                output.append(f"- **{provider}**")
+            output.append("")
 
-def format_generic(
-    data: Any, 
-    title: str = "", 
-    indent: int = 2,
-    use_tables: bool = True
-) -> str:
-    """
-    Convertit un objet JSON ou une liste en Markdown formaté.
+        output.append("")
+        
+        return "\n".join(output)
+
+    @classmethod
+    def format_version(cls,version: Version) -> str:
+        output = ["# Traefik version"]
+        output.append(f"- **Version** : {version.version}")
+        output.append(f"- **Codename** : {version.codename}")
+        output.append(f"- **startDate** : {version.startdate}")
+        
+        output.append("")
+        return "\n".join(output)
+
+    @classmethod
+    def format_entrypoint(cls,entrypoint: EntryPoint, short: bool = False) -> str:
+        output = [f"## Entrypoint : {entrypoint.name}"]
+
+        output.append(f"- **address**: {entrypoint.address}")
+        if short: 
+            return "\n".join(output)
+
+        output.append(f"### Details")
+        output.append(f"- **http**: {entrypoint.http}")
+        output.append(f"- **transport**: ")
+        output.append(f"    - **life cyle**: {entrypoint.transport.get("lifeCycle","N/A")}")
+        output.append(f"    - **responding timeouts**: {entrypoint.transport.get("respondingTimeouts","N/A")}")
+        output.append(f"- **forwarded headers**: {entrypoint.forwardedHeaders}")
     
-    Args:
-        data: Données JSON (dict, list, object primitive)
-        title: Titre optionnel pour le bloc Markdown
-        indent: Tabulation des tableaux et objets (défaut 2)
-        use_tables: Utiliser des tableaux si c'est une dict à liste de tuples (défaut True)
-    
-    Returns:
-        String Markdown formaté
-    """
-    md = []
-    
-    # Titre du bloc (si fourni)
-    if title:
-        if isinstance(data, str):
-            title_md = f"**{title}**"
+        output.append("")
+        return "\n".join(output)
+
+    @classmethod
+    def format_middleware(cls,middleware: Middleware, short: bool = False) -> str:
+        output = [f"## Middleware : {middleware.name}"]
+
+        output.append(f"- **protocol**: {middleware.protocol}")
+        output.append(f"- **provider**: {middleware.provider}")
+        output.append(f"- **type**: {middleware.type}")
+        output.append(f"- **status**: {middleware.status}")
+        if len(middleware.usedBy) <= 0:
+            output.append(f"- **not used**")
         else:
-            title_md = f"\n\n### {title}"
-        md.append(title_md)
-    
-    # Traitement récursif selon le type de données
-    if data is None:
-        return ""
-    
-    elif isinstance(data, str):
-        # Chaîne : formatage basique
-        try:
-            json_data = json.loads(data)
-            result = _format_generic_recursive(json_data, indent=indent, use_tables=use_tables)
-            return result if title == "" else title_md + "\n" + result
-        except json.JSONDecodeError:
-            if title:
-                md.append(f"- **{title}**: `{data}`")
-            else:
-                md.append(f"{data}")
-            return "\n".join(md)
-    
-    elif isinstance(data, (dict, list)):
-        # Inclure le titre dans le résultat
-        formatted = _format_generic_recursive(data, indent=indent, use_tables=use_tables)
-        return title_md + "\n" + formatted if title else formatted
-    
-    else:
-        # Primitive: string, int, float, bool
-        if isinstance(data, bool):
-            md.append(f"- `{data}`")
-        elif isinstance(data, int):
-            md.append(f"- `{data}`")
-        elif isinstance(data, float):
-            md.append(f"- `{data:.2f}`")
-        else:
-            md.append(f"- `{str(data)}`")
-        return "\n".join(md)
+            output.append(f"- **used by**: \n{"\n".join(f"\t- {item}" for item in middleware.usedBy)}")
+        
+        output.append("")
+        if short: 
+            return "\n".join(output)
 
-def _format_generic_recursive(
-    data: Any, 
-    indent: int = 2,
-    use_tables: bool = True
-) -> str:
-    """Recurssive formatter pour les structures JSON complexes"""
-    
-    # Cas vide/null
-    if data is None or data == "":
-        return "- `null`"
-    
-    # Liste
-    elif isinstance(data, list):
-        result = []
+        output.append(f"### Details")
+        output.append(f"\n".join(f"- **{k}**: {str(v)}" for k, v in middleware.details.items()))
+        output.append("")
+
+        return "\n".join(output)
+
+    @classmethod    
+    def format_service(cls,service: Service, short: bool = False) -> str:
+        output = [f"## Service : {service.name}"]
+
+        output.append(f"- **protocol**: {service.protocol}")
+        output.append(f"- **provider**: {service.provider}")
+        output.append(f"- **status**: {service.status}")
+        output.append(f"- **type**: {service.type}")
+        if len(service.serverStatus) > 0:
+            output.append(f"- **server status**: \n{"\n".join(f"\t- {item}" for item in service.serverStatus)}")
+        output.append("")
+
+        if short:
+            return "\n".join(output)
+
+        output.append(f"### Details")
+        output.append(f"\n".join(f"- **{k}**: {v}" for k, v in service.details.items()))
+        output.append("")
+
+        return "\n".join(output)
+
+    @classmethod
+    def format_router(cls,router: Router, short: bool = False) -> str:
+        output = [f"## Router : {router.name}"]
+
+        output.append(f"- **protocol**: {router.protocol}")
+        output.append(f"- **provider**: {router.provider}")
+        output.append(f"- **rule**: {router.rule}")
+        output.append(f"- **service**: {router.service}")
+        output.append(f"- **status**: {router.status}")
+        if router.entryPoints:
+            output.append(f"- **entrypoints**:")
+            output.append(f"{"\n".join(f"\t- {item}" for item in router.entryPoints)}")
+        if router.middlewares:
+            output.append(f"- **middlewares**:")
+            output.append(f"{"\n".join(f"\t- {item}" for item in router.middlewares)}")
+
+        output.append("")
         
-        if len(data) == 0:
-            return ""
+        if short:
+            return "\n".join(output)
+
+        output.append(f"### Details")
+        output.append(f"- **tls**: {router.tls}")
+        output.append(f"- **priority**: {router.priority}")
+        output.append(f"- **observability**: {router.observability}")
+        if router.using:
+            output.append(f"- **using**:")
+            output.append(f"{"\n".join(f"\t- {item}" for item in router.using)}")
         
-        for item in data:
-            if isinstance(item, list) or isinstance(item, dict):
-                result.append(f"- {format_generic(item)}")
-            elif isinstance(item, bool):
-                result.append(f"- `{str(item).lower()}`")
-            else:
-                result.append(f"- `{str(item)}`")
-        
-        return "\n".join(result) if use_tables else json.dumps(data, indent=indent)
-    
-    # Dictionnaire (ou objet JSON)
-    elif isinstance(data, dict):
-        result = []
-        
-        # Titre principal si présent
-        for key in data:
-            value = data[key]
-            # Gérer les clés spéciales comme "name" ou "rule"
-            if key == "name":
-                result.append(f"- **`{value}`** (Provider: `{data.get('provider', 'N/A')}`)")
-            elif key == "rule" or key == "status":
-                result.append(f"- {key.capitalize()}: `{value}`")
-            else:
-                result.append(f"- {key}: {format_generic(value)}")
-        
-        return "\n".join(result) if use_tables else json.dumps(data, indent=indent)
-    
-    # Chaîne (déjà gérée par les appels récursifs)
-    elif isinstance(data, str):
-        return f"`{data}`"
+        output.append("")
+
+        return "\n".join(output)
 
 
 class QueryTools:
@@ -196,8 +201,8 @@ class QueryTools:
         """
         try:
             overview_data = await self.client.get_overview()
-            overview = TraefikOverview(**overview_data)
-            formatted = format_overview(overview)
+            overview = Overview(**overview_data)
+            formatted = Formatter.format_overview(overview)
             
             return [TextContent(type="text", text=formatted)]
             
@@ -214,8 +219,9 @@ class QueryTools:
             Formatted overview information
         """
         try:
-            version = await self.client.get_version()
-            formatted = format_version(version)
+            raw_json = await self.client.get_version()
+            version = Version(**raw_json)
+            formatted = Formatter.format_version(version)
             
             return [TextContent(type="text", text=formatted)]
             
@@ -224,7 +230,8 @@ class QueryTools:
             logger.error(error_msg)
             return [TextContent(type="text", text=error_msg)]
 
-    async def get_api_content(self, endpoint: str) -> List[TextContent]:
+    async def get_entrypoint(self, 
+                             name: str | None) -> List[TextContent]:
         """
         Get the content of api endpoint
         
@@ -235,14 +242,116 @@ class QueryTools:
             Formatted content
         """
         try:
+            endpoint = "/api/entrypoints"
+            if name: endpoint = f"{endpoint}/{name}"
             raw_data = await self.client.get_api_content(endpoint)
-            title = " ".join(endpoint.split("/")[2:])
-            formatted = format_generic(raw_data,title=title )
-            
-            return [TextContent(type="text", text=formatted)]
+            formatted = ["# Entrypoints\n"]
+            short_format = True
+            if name:
+                raw_data = [raw_data]
+                short_format = False
+            for data in raw_data:
+                entrypoint = EntryPoint(**data)
+                formatted.append(Formatter.format_entrypoint(entrypoint, short=short_format))   
+            return [TextContent(type="text", text="\n".join(formatted))]
             
         except TraefikError as e:
             error_msg = f"Failed to access {endpoint}: {str(e)}"
             logger.error(error_msg)
             return [TextContent(type="text", text=error_msg)]
 
+    async def get_middleware(self, 
+                             protocol: ProtocolType,
+                             name: str | None) -> List[TextContent]:
+        """
+        Get the content of api endpoint
+        
+        Args:
+            endpoint : API endpoint, e.g. '/api/http/routers'
+            
+        Returns:
+            Formatted content
+        """
+        try:
+            endpoint = f"/api/{protocol}/middlewares"
+            if name: endpoint = f"{endpoint}/{name}"
+            raw_data = await self.client.get_api_content(endpoint)
+            formatted = ["# Middlewares\n"]
+            short_format = True
+            if name:
+                raw_data = [raw_data]
+                short_format = False
+            for data in raw_data:
+                data = Middleware.parseData(protocol, data)
+                middleware = Middleware(**data)
+                formatted.append(Formatter.format_middleware(middleware, short=short_format))   
+            return [TextContent(type="text", text="\n".join(formatted))]
+            
+        except TraefikError as e:
+            error_msg = f"Failed to access {endpoint}: {str(e)}"
+            logger.error(error_msg)
+            return [TextContent(type="text", text=error_msg)]
+
+    async def get_service(self, 
+                             protocol: ProtocolType,
+                             name: str | None) -> List[TextContent]:
+        """
+        Get the content of api endpoint
+        
+        Args:
+            endpoint : API endpoint, e.g. '/api/http/routers'
+            
+        Returns:
+            Formatted content
+        """
+        try:
+            endpoint = f"/api/{protocol}/services"
+            if name: endpoint = f"{endpoint}/{name}"
+            raw_data = await self.client.get_api_content(endpoint)
+            formatted = ["# Services\n"]
+            short_format = True
+            if name:
+                raw_data = [raw_data]
+                short_format = False
+            for data in raw_data:
+                data = Service.parseData(protocol, data)
+                service = Service(**data)
+                formatted.append(Formatter.format_service(service, short=short_format))   
+            return [TextContent(type="text", text="\n".join(formatted))]
+            
+        except TraefikError as e:
+            error_msg = f"Failed to access {endpoint}: {str(e)}"
+            logger.error(error_msg)
+            return [TextContent(type="text", text=error_msg)]
+
+    async def get_router(self, 
+                             protocol: ProtocolType,
+                             name: str | None) -> List[TextContent]:
+        """
+        Get the content of api endpoint
+        
+        Args:
+            endpoint : API endpoint, e.g. '/api/http/routers'
+            
+        Returns:
+            Formatted content
+        """
+        try:
+            endpoint = f"/api/{protocol}/routers"
+            if name: endpoint = f"{endpoint}/{name}"
+            raw_data = await self.client.get_api_content(endpoint)
+            formatted = ["# Routers\n"]
+            short_format = True
+            if name:
+                raw_data = [raw_data]
+                short_format = False
+            for data in raw_data:
+                data = Router.parseData(protocol, data)
+                router = Router(**data)
+                formatted.append(Formatter.format_router(router, short=short_format))   
+            return [TextContent(type="text", text="\n".join(formatted))]
+            
+        except TraefikError as e:
+            error_msg = f"Failed to access {endpoint}: {str(e)}"
+            logger.error(error_msg)
+            return [TextContent(type="text", text=error_msg)]

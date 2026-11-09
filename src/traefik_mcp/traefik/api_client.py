@@ -7,9 +7,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 import base64
-
 import httpx
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
