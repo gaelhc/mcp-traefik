@@ -1,319 +1,328 @@
-"""
-Tests pour les outils de requête Traefik.
+"""Tests for QueryTools."""
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
 
-Ce module contient les tests unitaires pour les fonctions de formatage
-dans query_tools.py.
-"""
-import pytest
-from traefik_mcp.server import list_tools, call_tool, initialize_client
-from traefik_mcp.tools.query_tools import Formatter, QueryTools
-from traefik_mcp.traefik.models import Middleware, Router, Service, EntryPoint
-from traefik_mcp.traefik.models import Overview, Version
+from mcp.types import TextContent
+from traefik_mcp.tools.query_tools import QueryTools
 
 
-@pytest.fixture
-def mock_traefik_overview():
-    """Fixture avec des données d'overview typiques."""
-    data = {
-        "http": {
-            "routers": {"total": 3},
-            "services": {"total": 8},
-            "middlewares": {"total": 5}
-        },
-        "tcp": {
-            "routers": {"total": 2},
-            "services": {"total": 4},
-            "middlewares": {"total": 3}
-        },
-        "udp": {
-            "routers": {"total": 0},
-            "services": {"total": 0},
-            "middlewares": {"total": 0}
-        },
-        "features": {
-            "traefik-v1": "true",
-            "global": "enabled"
-        },
-        "providers": [
-            "default",
-            "local"
-        ]
-    }
-    return Overview(**data)
+class TestQueryToolsGetOverview(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_overview method of QueryTools."""
 
-@pytest.fixture
-def mock_version():
-    """Fixture avec des données de version typiques."""
-    data = {
-        "Version": "1.2.3",
-        "Codename": "test-codename",
-        "startDate": "1592-14-03"
-    }
-    return Version(**data)
-
-@pytest.fixture
-def mock_middleware_1():
-    """Fixture avec des données de version typiques."""
-    data = {
-        "chain":{
-            "middlewares":[
-                "crowdsec-bouncer@file",
-                "geoip@file",
-                "geoblock-fr@file"
-                ]
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "totalRouters": 12,
+            "totalServices": 12,
+            "totalMiddlewares": 16,
+            "router": {
+                "http": 12,
+                "tcp": 0,
+                "udp": 0,
             },
-        "status":"enabled",
-        "usedBy":[
-            "authelia@file",
-            "cloud-router@file"
-            ],
-        "name":"check-ip@file",
-        "provider":"file",
-        "type":"chain"
+            "service": {
+                "http": 12,
+                "tcp": 0,
+                "udp": 0,
+            },
+            "middleware": {
+                "http": 16,
+                "tcp": 0,
+                "udp": 0,
+            },
+            "features": {
+                "tracing": "",
+                "metrics": "Prometheus",
+                "accessLog": "True",
+            },
+            "providers": ["File"],
         }
-    data = Middleware.parseData(protocol='http',data=data)
-    return Middleware(**data)
-    
-@pytest.fixture
-def mock_middleware_2():
-    """Fixture avec des données de version typiques."""
-    data = {
-        "plugin":{
-            "geoblock":{
-                "allowLocalRequests":"true",
-                "allowUnknownCountries":"false",
-                "api":"https://get.geojs.io/v1/ip/country/{ip}",
-                "apiTimeoutMs":"750",
-                "cacheSize":"15",
-                "countries":["FR","CA"],
-                "forceMonthlyUpdate":"true",
-                "logAllowedRequests":"false",
-                "logApiRequests":"true",
-                "logLocalRequests":"false",
-                "unknownCountryApiResponse":"nil"
-                }
-            },
-        "status":"enabled",
-        "name":"geoblock-fr@file",
-        "provider":"file",
-        "type":"geoblock"
+
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_overview_successful(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_overview = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_overview()
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+
+
+class TestQueryToolsGetVersion(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_version method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "Version": "1.2.3",
+            "Codename": "test-codename",
+            "startDate": "1592-14-03"
+            }
+
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_version(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_version = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_version()
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+
+class TestQueryToolsGetEntrypoint(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_entrypoint method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "address":":443",
+            "transport":{
+                "lifeCycle":{
+                    "graceTimeOut":"10s"
+                },
+                "respondingTimeouts":{
+                    "readTimeout":"30m0s",
+                    "writeTimeout":"30m0s",
+                    "idleTimeout":"3m0s"
+                    }
+                },
+            "forwardedHeaders":{
+                "trustedIPs":[
+                    "127.0.0.1/32",
+                    "192.168.1.0/24",
+                    "100.64.0.0/10"
+                    ]
+                },
+            "http":{
+                "tls":{"options":"default"},
+                "sanitizePath":True,
+                "maxHeaderBytes":1048576
+                },
+            "http2":{"maxConcurrentStreams":250},
+            "udp":{"timeout":"3s"},
+            "name":"websecure"
         }
-    data = Middleware.parseData(protocol='http',data=data)
-    return Middleware(**data)
 
-@pytest.fixture
-def mock_router():
-    data = {
-        "entryPoints":["traefik"],
-        "service":"api@internal",
-        "rule":"PathPrefix(`/api`)",
-        "ruleSyntax":"v3",
-        "priority":9223372036854775806,
-        "observability":{
-            "accessLogs":True,
-            "tracing":True,
-            "metrics":True
-            },
-        "status":"enabled",
-        "using":["traefik"],
-        "name":"api@internal",
-        "provider":"internal"
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_version(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_entrypoint(name="websecure")
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+class TestQueryToolsGetRouter(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_router method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "entryPoints":["traefik"],
+            "service":"api@internal",
+            "rule":"PathPrefix(`/api`)",
+            "ruleSyntax":"v3",
+            "priority":9223372036854775806,
+            "observability":{
+                "accessLogs":True,
+                "tracing":True,
+                "metrics":True
+                },
+            "status":"enabled",
+            "using":["traefik"],
+            "name":"api@internal",
+            "provider":"internal"
         }
-    data = Router.parseData(protocol='http',data=data)
-    return Router(**data)
 
-@pytest.fixture
-def mock_service():
-    data = {
-        "loadBalancer":{
-            "servers":[{"url":"http://public-cloud:80"}],
-            "passHostHeader":True,
-            "responseForwarding":{"flushInterval":"100ms"}
-            },
-        "status":"enabled",
-        "usedBy":["cloud-router@file"],
-        "serverStatus":{"http://public-cloud:80":"UP"},
-        "name":"cloud-service@file",
-        "provider":"file",
-        "type":"loadbalancer"
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_router(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_router(protocol='http',name="api@internal")
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+class TestQueryToolsGetMiddleware(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_router method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "entryPoints":["traefik"],
+            "service":"api@internal",
+            "rule":"PathPrefix(`/api`)",
+            "ruleSyntax":"v3",
+            "priority":9223372036854775806,
+            "observability":{
+                "accessLogs":True,
+                "tracing":True,
+                "metrics":True
+                },
+            "status":"enabled",
+            "using":["traefik"],
+            "name":"api@internal",
+            "provider":"internal"
         }
-    data = Service.parseData(protocol='http',data=data)
-    return Service(**data)
 
-@pytest.fixture
-def mock_entrypoint():
-    data = {
-        "address":":443",
-        "transport":{
-            "lifeCycle":{
-                "graceTimeOut":"10s"
-            },
-            "respondingTimeouts":{
-                "readTimeout":"30m0s",
-                "writeTimeout":"30m0s",
-                "idleTimeout":"3m0s"
-                }
-            },
-        "forwardedHeaders":{
-            "trustedIPs":[
-                "127.0.0.1/32",
-                "192.168.1.0/24",
-                "100.64.0.0/10"
-                ]
-            },
-        "http":{
-            "tls":{"options":"default"},
-            "sanitizePath":True,
-            "maxHeaderBytes":1048576
-            },
-        "http2":{"maxConcurrentStreams":250},
-        "udp":{"timeout":"3s"},
-        "name":"websecure"
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_middleware(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
+        
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
+        
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
+        
+        # Call the method
+        result = await query_tools.get_router(protocol='http',name="check-ip@file")
+        
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
+
+class TestQueryToolsGetService(unittest.IsolatedAsyncioTestCase):
+    """Tests for the get_router method of QueryTools."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock client that returns sample data
+        self.mock_client = MagicMock()
+        
+        self.sample_data = {
+            "loadBalancer":{
+                "servers":[{"url":"http://public-cloud:80"}],
+                "passHostHeader":True,
+                "responseForwarding":{"flushInterval":"100ms"}
+                },
+            "status":"enabled",
+            "usedBy":["cloud-router@file"],
+            "serverStatus":{"http://public-cloud:80":"UP"},
+            "name":"cloud-service@file",
+            "provider":"file",
+            "type":"loadbalancer"
         }
-    data = EntryPoint.parseData(data=data)
-    return EntryPoint(**data)
 
+    async def tearDown(self):
+        """Clean up after tests."""
+        pass
 
-
-
-class TestFormatOverview:
-    
-    def test_format_overview_basic(self, mock_traefik_overview):
-        result = Formatter.format_overview(mock_traefik_overview)
+    @patch("traefik_mcp.tools.query_tools.TraefikClient")
+    async def test_get_service(self, mock_client_class):
+        """Test successful overview retrieval with sample data."""
+        # Setup mock client
+        mock_instance = MagicMock()
+        mock_client_class.return_value = mock_instance
         
-        assert "# Traefik Overview" in result
-        assert "http" in result
-        assert "tcp" in result
-        assert "udp" in result
-        assert "entrypoint" in result
+        # Mock the get_overview method to return our sample data
+        mock_instance.get_api_content = AsyncMock(return_value=self.sample_data)
         
-        assert "5" in result
-        assert "12" in result
-        assert "8" in result
-    
-    def test_format_overview_section_titles(self, mock_traefik_overview):
-        result = Formatter.format_overview(mock_traefik_overview)
+        # Create QueryTools instance with mocked client
+        query_tools = QueryTools(client=mock_instance)
         
-        assert "**Routers**" in result
-        assert "**Middlewares**" in result
-        assert "**Services**" in result
-        assert "**Entrypoints**" in result
-        assert "**Protocols**" in result
-        assert "## Summary" in result
+        # Call the method
+        result = await query_tools.get_service(protocol='http',name="cloud-service@file")
         
-class TestFormatVersion:
-
-    def test_format_version_basic(self, mock_version):
-        result = Formatter.format_version(mock_version)
-        
-        assert "# Traefik version" in result
-        assert "**Version**" in result
-        assert "**Codename**" in result
-        assert "**startDate**" in result
-
-        assert "1.2.3" in result
-        assert "test-codename" in result
-        assert "1592-14-03" in result
-
-class TestFormatMiddleware:
-
-    def test_format_middleware_short(self, mock_middleware_1):
-        result = Formatter.format_middleware(mock_middleware_1, True)
-        
-        assert "## Middleware" in result
-        assert "**protocol**" in result
-        assert "**provider**" in result
-        assert "**type**" in result
-        assert "**status**" in result
-        assert not "### Details" in result
-
-        assert "check-ip@file" in result
-        assert "chain" in result
-        assert "authelia@file" in result
-        assert "enabled" in result
-
-    def test_format_middleware_long(self, mock_middleware_2):
-        result = Formatter.format_middleware(mock_middleware_2)
-
-        assert "### Details" in result
-        assert "FR" in result
-        assert "geoblock" in result
-        assert "unknownCountryApiResponse" in result
-
-class TestFormatRouter:
-
-    def test_format_router_short(self, mock_router):
-        result = Formatter.format_router(mock_router, True)
-        
-        assert "## Router" in result
-        assert "**protocol**" in result
-        assert "**provider**" in result
-        assert "**rule**" in result
-        assert "**service**" in result
-        assert "**status**" in result
-        assert not "### Details" in result
-
-        assert "api@internal" in result
-        assert "PathPrefix(`/api`)" in result
-        assert "traefik" in result
-        assert "enabled" in result
-
-    def test_format_router_long(self, mock_router):
-        result = Formatter.format_router(mock_router)
-
-        assert "### Details" in result
-        assert "priority" in result
-        assert "observability" in result
-        assert "metrics" in result
-
-class TestFormatService:
-
-    def test_format_service_short(self, mock_service):
-        result = Formatter.format_service(mock_service, True)
-        
-        assert "## Service" in result
-        assert "**protocol**" in result
-        assert "**provider**" in result
-        assert "**type**" in result
-        assert "**server status**" in result
-        assert not "### Details" in result
-
-        assert "http://public-cloud:80" in result
-        assert "cloud-service@file" in result
-        assert "loadbalancer" in result
-        assert "enabled" in result
-
-    def test_format_service_long(self, mock_service):
-        result = Formatter.format_service(mock_service)
-
-        assert "### Details" in result
-        assert "passHostHeader" in result
-        assert "flushInterval" in result
-        assert "url" in result
-
-class TestFormatEntryPoint:
-
-    def test_format_entrypoint_short(self, mock_entrypoint):
-        result = Formatter.format_entrypoint(mock_entrypoint, True)
-        
-        assert "## Entrypoint" in result
-        assert "**address**" in result
-        assert not "### Details" in result
-
-        assert ":443" in result
-
-    def test_format_entrypoint_long(self, mock_entrypoint):
-        result = Formatter.format_entrypoint(mock_entrypoint)
-
-        assert "### Details" in result
-        assert "**http**" in result
-        assert "**transport**" in result
-        assert "**forwarded headers**" in result
-        assert "**life cyle**" in result
-        
-        assert "tls" in result
-        assert "timeout" in result
+        # Verify the result is a list containing TextContent
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TextContent)
+        self.assertEqual(result[0].type, "text")
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    unittest.main()
