@@ -96,13 +96,9 @@ class EntryPoint(TraefikModel):
     transport: Optional[Dict[str, Any]] = None
     forwardedHeaders: Optional[Dict[str, Any]] = None
 
-
-class Provider(TraefikModel):
-    """Traefik Provider model."""
-    
-    name: str
-    provider_type: str
-
+    @classmethod
+    def parseData(cls, data: dict[str, Any]) -> dict[str, Any]:
+        return data
 
 class Overview(TraefikModel):
     """Traefik overview information."""
