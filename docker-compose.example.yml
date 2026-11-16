@@ -1,0 +1,19 @@
+services:
+  traefik-mcp:
+    build: .
+    container_name: mcp-traefik
+    restart: unless-stopped
+    volumes:
+      # ReadOnly mounting of Traefik access.log
+      # Path in container can be modified by using `TRAEFIK_ACCESS_LOG` env.
+      - /path/to/access.log/on/host:/logs/access.log:ro
+    environment:
+      - MCP_TRANSPORT=sse # must be 'sse' for containerization
+      - MCP_LOG_LEVEL=INFO
+      - TRAEFIK_ACCESS_LOG='/logs/access.log' # Path to trafik access log in the container
+      # All of following env should be set in .env file
+      - MCP_HOST=0.0.0.0 # IP only
+      - MCP_PORT=8080 # Affect port in the container only 
+      - TRAEFIK_API_URL='https://traefik-dashboard.my-domain.com'
+    ports:
+      - "8080:8080" 

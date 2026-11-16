@@ -1,0 +1,188 @@
+"""
+Traefik API Client
+
+Async HTTP client for interacting with Traefik's REST API.
+"""
+import logging
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
+import base64
+import httpx
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class TraefikError(Exception):
+    """Base exception for Traefik API errors."""
+    pass
+
+
+class TraefikConnectionError(TraefikError):
+    """Exception raised when connection to Traefik fails."""
+    pass
+
+
+class TraefikAPIError(TraefikError):
+    """Exception raised when Traefik API returns an error."""
+    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Dict] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response = response
+
+
+class TraefikClient:
+    """
+    Async client for Traefik API.
+    
+    Provides methods to query Traefik configuration, status, and metrics.
+    """
+    
+    def __init__(self, api_url: str, 
+                 api_key: Optional[str] = None, 
+                 basic_auth_username: Optional[str] = None, 
+                 basic_auth_password: Optional[str] = None,
+                 access_log_file: Optional[Path] = None, 
+                 timeout: float = 30.0):
+        """
+        Initialize Traefik API client.
+        
+        Args:
+            api_url: Base URL for Traefik API (e.g., http://localhost:8080)
+            api_key: Optional API key for authentication (Bearer token)
+            basic_auth_username: Optional username for basic authentication
+            basic_auth_password: Optional password for basic authentication
+            timeout: Request timeout in seconds
+        """
+        self.api_url = api_url.rstrip('/')
+        self.api_key = api_key
+        self.basic_auth_username = basic_auth_username
+        self.basic_auth_password = basic_auth_password
+        self.access_log_file = access_log_file
+        self.timeout = timeout
+        
+        # Prepare headers
+        self.headers = {
+            'User-Agent': 'traefik-mcp-server/0.1.0',
+            'Accept': 'application/json',
+        }
+        
+        # Set authentication header - API key takes precedence over basic auth
+        if api_key:
+            self.headers['Authorization'] = f'Bearer {api_key}'
+        elif basic_auth_username and basic_auth_password:
+            credentials = f"{basic_auth_username}:{basic_auth_password}"
+            encoded_credentials = base64.b64encode(credentials.encode()).decode()
+            self.headers['Authorization'] = f'Basic {encoded_credentials}'
+    
+    async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+        """
+        Make HTTP request to Traefik API.
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE)
+            endpoint: API endpoint (e.g., '/api/overview')
+            **kwargs: Additional arguments for httpx request
+            
+        Returns:
+            Parsed JSON response
+            
+        Raises:
+            TraefikConnectionError: If connection fails
+            TraefikAPIError: If API returns an error
+        """
+        url = urljoin(self.api_url, endpoint)
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, headers=self.headers) as client:
+                logger.debug(f"Making {method} request to {url}")
+
+                response = await client.request(method, url, **kwargs)
+                
+                if response.status_code == 401:
+                    raise TraefikAPIError(
+                        "Authentication failed. Check your API key.",
+                        status_code=response.status_code
+                    )
+                
+                if response.status_code == 404:
+                    raise TraefikAPIError(
+                        f"Endpoint not found: {endpoint}",
+                        status_code=response.status_code
+                    )
+                
+                if response.status_code >= 400:
+                    error_msg = f"API request failed: {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        error_msg += f" - {error_data.get('message', 'Unknown error')}"
+                    except Exception as e:
+                        logger.warning(f"Failed to parse API error response: {e}")
+                    
+                    raise TraefikAPIError(
+                        error_msg,
+                        status_code=response.status_code,
+                        response=response.text
+                    )
+                
+                # Return empty dict for 204 No Content
+                if response.status_code == 204:
+                    return {}
+                
+                return response.json()
+            
+        except httpx.TimeoutException as e:
+            logger.error(f"Request timeout after {self.timeout}s")
+            raise TraefikConnectionError(f"Request timeout after {self.timeout}s")
+        except httpx.ConnectError as e:
+            logger.error(f"Failed to connect to Traefik at {self.api_url}")
+            raise TraefikConnectionError(f"Failed to connect to Traefik at {self.api_url}: {e}")
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error: {e}")
+            raise TraefikConnectionError(f"HTTP error: {e}")
+    
+    async def health_check(self) -> bool:
+        """
+        Check if Traefik API is accessible.
+        
+        Returns:
+            True if healthy, False otherwise
+        """
+        try:
+            await self.get_overview()
+            return True
+        except TraefikError as e:
+            logger.error(f"Health check failed: {e}")
+            return False
+    
+    async def get_version(self) -> Dict[str, Any]:
+        """
+        Get Traefik version information.
+        
+        Returns:
+            Version information
+        """
+        return await self._make_request('GET', '/api/version')
+    
+    async def get_overview(self) -> Dict[str, Any]:
+        """
+        Get Traefik overview information.
+        
+        Returns:
+            Overview data with router, service, and middleware counts
+        """
+        return await self._make_request('GET', '/api/overview')
+
+    async def get_api_content(self, endpoint: str) -> List[Dict[str|int, Any]]:
+        """
+        Get a list of components.
+        
+        Args:
+            endpoint: API endpoint (e.g., '/api/routers', '/api/services')
+                Supports query params: ?protocol=http&provider=edge
+        
+        Returns:
+            List of component objects
+        """
+        response = await self._make_request('GET', endpoint)
+        return response
